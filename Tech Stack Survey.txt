@@ -1,0 +1,107 @@
+03.02 Tech Stack Survey
+
+Overview
+You can use any tech stack that you wish for the final project. We will conduct a broad survey of languages, backend frameworks, and front-end frameworks that you may want to use. The only restriction is that it must run on EC2 with a Linux image. I have provided a tech stack for you to use if you don't have any preferences. You're free to use it. NOTE: All demo videos in future modules will use the default tech stack.  You are not committing to anything in this assignment; this is just a survey, so you know what is out there. When it comes time to start working on your app you can use the default starter code if you wish.
+
+Task 1 - Research & Compare
+Find 3 different full-stack stacks and, for each one, clearly define:
+
+Backend language
+Backend framework
+Templating system (or frontend rendering approach)
+UX/UI framework (Bootstrap, Tailwind, Bulma, Material UI, etc.)
+Testing approach (unit/integration/e2e + tool names)
+Debugging approach (how you’ll debug + tools)
+Your stacks must be meaningfully different (don’t do “Flask vs Django vs FastAPI” as your only differences). Not allowed: Node.js with Express (that stack is provided already). You may use Node.js only if the frameworks differ from the provided starter codeLinks to an external site.. (but it’s safer to avoid Node altogether unless you’re confident your choice is clearly different).
+
+Task 2 - Implement "Hello World"
+All major frameworks have plenty of documentation on how to set up a quick "hello world"; some even provide project generators that will construct a new application for you. More obscure frameworks (like using x86 assembly) will require more work to set up and configure. After comparing 3 stacks, pick ONE and create a simple app that includes all of the following:
+
+“Hello World” App Requirements
+Your app must demonstrate:
+
+Server runs locally (you can show a terminal screenshot)
+One route/page that renders “Hello World”
+Uses a templating system (or equivalent server-side rendering)
+Uses a UI framework (e.g., Bootstrap) to style the page
+Includes one automated test
+Demonstrates debugging
+example: breakpoint screenshot, debug log output, or short explanation of how you stepped through a request
+
+
+Tech Stack Options
+Below are some ideas for where to get started
+
+Ruby on RailsLinks to an external site.
+C# and ASP.NET CoreLinks to an external site.
+Python and DjangoLinks to an external site.
+Java and SpringLinks to an external site.
+GoLinks to an external site. (my personal favorite)
+x86 AssemblyLinks to an external site. language  - This option is an instant A+++, assuming you survive the experience.
+HTMXLinks to an external site.
+PHP with LaravelLinks to an external site.
+Complete Examples
+Here are some complete examples to get you started. You don't have to pick one of the 5 below you can use anything this is just to help you out if you are struggling to find options.
+
+Stack Option 1: Python / Django
+Backend: Python
+Framework: Django
+Templating: Django Templates
+UI: Bootstrap or Tailwind
+Testing: pytest or Django test runner
+Debugging: Django debug toolbar, VS Code debugger
+Stack Option 2: Java / Spring Boot
+Backend: Java
+Framework: Spring Boot
+Templating: Thymeleaf
+UI: Bootstrap
+Testing: JUnit + Spring Test
+Debugging: IntelliJ/VS Code debugger, logs
+Stack Option 3: C# / ASP.NET Core
+Backend: C#
+Framework: ASP.NET Core MVC
+Templating: Razor Views
+UI: Bootstrap
+Testing: xUnit or NUnit
+Debugging: Visual Studio debugger, logging
+Stack Option 4: Ruby / Rails
+Backend: Ruby
+Framework: Ruby on Rails
+Templating: ERB (or Haml/Slim)
+UI: Bootstrap/Tailwind
+Testing: RSpec or Minitest
+Debugging: byebug, Rails logs
+Stack Option 5: PHP / Laravel
+Backend: PHP
+Framework: Laravel
+Templating: Blade
+UI: Bootstrap/Tailwind
+Testing: PHPUnit + Laravel testing
+Debugging: Xdebug, Laravel logs
+Task 3 - Post your findings
+Use this structure in your discussion post:
+
+Stack 1:
+Backend language:
+Framework:
+Templating/rendering:
+UX/UI:
+Testing:
+Debugging:
+Pros/cons (2–3 bullets):
+Stack 2:
+(same fields)
+Stack 3:
+(same fields)
+Chosen stack to do hello world:
+I chose:
+Reason (3–5 sentences):
+Hello World evidence:
+Route/controller:
+Template/view:
+UI framework proof:
+Test + results:
+Screenshots/Repo link:
+Submitting
+Create a new discussion post and use the structure above to post your findings.
+(optional) Read and respond to other students' posts. This is a great way to find other students to form a team to work on the final project.
