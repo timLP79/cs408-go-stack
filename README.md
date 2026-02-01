@@ -14,16 +14,21 @@ A simple full-stack web application built with Go, Gin web framework, and SQLite
   - Template rendering with layout pattern
   - Bootstrap CDN integration
   - Clean project structure
+- ✅ Testing Infrastructure ([Issue #8](https://github.com/timLP79/cs408-go-stack/issues/8))
+  - First test written (`main_test.go`)
+  - Testing documentation created
+  - Debugging approaches documented
 
 **Next Up:**
 - Issue #2: Add static file serving (Priority: High)
-- Issue #8: Set up testing infrastructure (Priority: High)
+- Issue #9: Write unit tests for database layer
+- Issue #4: Add database integration (SQLite)
 
-**Overall Progress:** 1/11 issues completed
+**Overall Progress:** 2/11 issues completed
 
 ### What I've Learned So Far
 
-**Milestone 1 Accomplishments:**
+**Milestone 1 - Hello World Accomplishments:**
 - ✅ Set up Go module with `go.mod` and dependency management
 - ✅ Configured Gin web framework for HTTP routing
 - ✅ Implemented Go template rendering with layout pattern
@@ -32,6 +37,13 @@ A simple full-stack web application built with Go, Gin web framework, and SQLite
 - ✅ Learned Git workflow with issue tracking
 - ✅ Used `Closes #N` syntax to auto-close GitHub issues
 
+**Testing Infrastructure Accomplishments:**
+- ✅ Wrote first test using Go's `testing` package
+- ✅ Learned `httptest` for testing HTTP handlers
+- ✅ Used `t.Logf()` for debugging test failures
+- ✅ Documented debugging approaches (print debugging, Delve, GoLand)
+- ✅ Created comprehensive testing and debugging guide
+
 **Key Go Concepts Mastered:**
 - Package structure and imports
 - Gin router setup (`gin.Default()`, `router.GET()`)
@@ -39,22 +51,27 @@ A simple full-stack web application built with Go, Gin web framework, and SQLite
 - Go template syntax (`{{define}}`, `{{block}}`, `{{.Variable}}`)
 - Struct types and data passing to templates
 - Environment configuration with `os.Getenv()`
+- Testing with `testing` package and `httptest`
+- Test function structure (Arrange, Act, Assert)
 
 **Development Tools:**
 - `go run .` - Run without building
 - `go build` - Compile to executable
 - `go mod download` - Install dependencies
+- `go test -v` - Run tests with verbose output
 - Git commit messages with issue references
+- JetBrains GoLand IDE for development
+- Delve debugger for advanced debugging
 
 ## Sprint Plan
 
 ### Sprint 1: Foundation (Week 1-2) 🔵 CURRENT
 **Focus:** Get basic web app working with styling
 - [x] Issue #1: ✅ Hello World App (COMPLETE)
+- [x] Issue #8: ✅ Set up testing infrastructure (COMPLETE)
 - [ ] Issue #2: Add static file serving (Priority: High)
 - [ ] Issue #3: Enhance templates with Bootstrap styling
 - [ ] Issue #7: Add error page template
-- [ ] Issue #8: Set up testing infrastructure (Priority: High)
 
 ### Sprint 2: Database (Week 3)
 **Focus:** Add data persistence
@@ -96,22 +113,27 @@ Issues are organized with these labels:
 
 ```
 go-full-stack/
-├── main.go              # Entry point: router, templates, server
-├── handlers.go          # HTTP handler functions (future)
-├── db.go                # Database manager (future)
+├── main.go                          # Entry point: router, templates, server
+├── main_test.go                     # HTTP handler tests
+├── handlers.go                      # HTTP handler functions (future)
+├── db.go                            # Database manager (future)
 ├── templates/
-│   ├── layout.html      # Base layout template
-│   ├── index.html       # Landing page content
-│   └── error.html       # Error page content
+│   ├── layout.html                  # Base layout template
+│   └── index.html                   # Landing page content
 ├── static/
-│   ├── stylesheets/     # CSS files
-│   ├── javascripts/     # JS files
-│   └── images/          # Image assets
-├── data/                # SQLite database (gitignored)
-├── go.mod               # Go module definition
-├── go.sum               # Dependency checksums
-├── GO_LEARNING_GUIDE.md # Learning reference
-└── README.md            # This file
+│   ├── stylesheets/                 # CSS files
+│   ├── javascripts/                 # JS files
+│   └── images/                      # Image assets
+├── screenshots/                     # Project screenshots for documentation
+├── data/                            # SQLite database (gitignored)
+├── go.mod                           # Go module definition
+├── go.sum                           # Dependency checksums
+├── README.md                        # This file
+├── GO_LEARNING_GUIDE.md             # Go syntax reference
+├── TESTING_AND_DEBUGGING_GUIDE.md   # Testing and debugging tutorial
+├── BOOTSTRAP_INTEGRATION_GUIDE.md   # Bootstrap integration guide
+├── tech-stack-survey.md             # Tech stack comparison and choice
+└── CANVAS_DISCUSSION_POST.md        # Hello World assignment submission
 ```
 
 ## Getting Started
@@ -233,9 +255,16 @@ Go templates use `{{ }}` for expressions:
 
 ## Learning Resources
 
+### Project Documentation
 - [GO_LEARNING_GUIDE.md](./GO_LEARNING_GUIDE.md) - Go syntax guide with examples from this project
+- [TESTING_AND_DEBUGGING_GUIDE.md](./TESTING_AND_DEBUGGING_GUIDE.md) - Comprehensive testing and debugging tutorial
+- [BOOTSTRAP_INTEGRATION_GUIDE.md](./BOOTSTRAP_INTEGRATION_GUIDE.md) - Bootstrap integration guide
+- [tech-stack-survey.md](./tech-stack-survey.md) - Tech stack comparison and rationale
+
+### External Resources
 - [Gin Documentation](https://gin-gonic.com/docs/)
 - [Go Templates Documentation](https://pkg.go.dev/html/template)
+- [Go Testing Documentation](https://pkg.go.dev/testing)
 - [Tour of Go](https://go.dev/tour/)
 
 ## Development Workflow
@@ -362,7 +391,29 @@ func TestSomething(t *testing.T) {
 }
 ```
 
-**Status:** Testing infrastructure to be set up in [Issue #8](https://github.com/timLP79/cs408-go-stack/issues/8)
+**Status:** ✅ Testing infrastructure set up - see [TESTING_AND_DEBUGGING_GUIDE.md](./TESTING_AND_DEBUGGING_GUIDE.md) for complete tutorial
+
+### Debugging Tools
+
+This project uses multiple debugging approaches:
+
+1. **Print Debugging** (Simplest)
+   - `t.Logf()` in tests - only shows with `-v` flag
+   - `fmt.Println()` for quick debugging in code
+   - `log.Printf()` for timestamped logging
+
+2. **Delve Debugger** (Official Go Debugger)
+   - Command-line debugger: `dlv debug` or `dlv test`
+   - Set breakpoints, inspect variables, step through code
+   - Install: `go install github.com/go-delve/delve/cmd/dlv@latest`
+
+3. **JetBrains GoLand IDE** (Visual Debugging)
+   - Visual breakpoints and variable inspection
+   - Built-in Delve integration
+   - Debug tests with right-click "Debug" option
+   - Keyboard shortcuts: F7 (Step Into), F8 (Step Over), F9 (Resume)
+
+See [TESTING_AND_DEBUGGING_GUIDE.md](./TESTING_AND_DEBUGGING_GUIDE.md) for detailed debugging tutorials and examples.
 
 ## Deployment
 

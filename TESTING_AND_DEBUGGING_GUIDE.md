@@ -381,21 +381,23 @@ dlv test
 (dlv) quit                    # Exit debugger
 ```
 
-### Technique 4: VS Code Debugging (Easiest for IDE users)
+### Technique 4: JetBrains GoLand Debugging (Easiest for IDE users)
 
-If you're using VS Code with the Go extension:
+If you're using JetBrains GoLand:
 
 **1. Open `main_test.go`**
 
 **2. Click left of line number to set breakpoint (red dot appears)**
 
-**3. Click "Debug Test" above the test function**
+**3. Right-click on the test function and select "Debug"**
 
 **4. Use debug controls:**
-- Step Over (F10) - Next line
-- Step Into (F11) - Go into function
-- Continue (F5) - Run to next breakpoint
+- Step Over (F8) - Next line
+- Step Into (F7) - Go into function
+- Resume Program (F9) - Run to next breakpoint
 - Hover over variables to see values
+- Use Watches window to monitor expressions
+- Evaluate Expression (Alt+F8) to run code during debug
 
 ### Technique 5: Table-Driven Test Debugging
 

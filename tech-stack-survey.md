@@ -93,11 +93,12 @@ func TestGetAllTodos(t *testing.T) {
 - Command-line interface for debugging
 - Install: `go install github.com/go-delve/delve/cmd/dlv@latest`
 
-**VS Code Debugging:**
-- Built-in Go debugger integration
+**JetBrains GoLand Debugging:**
+- Built-in Go debugger with Delve integration
 - Visual breakpoints and variable inspection
-- Debug tests with "Debug Test" code lens
-- Launch configurations for debugging servers
+- Debug tests with right-click "Debug" option
+- Run/Debug configurations for debugging servers
+- Advanced features: conditional breakpoints, watches, evaluate expressions
 
 **Gin Debug Mode:**
 - `gin.SetMode(gin.DebugMode)` - Verbose request logging
@@ -126,7 +127,7 @@ func TestIndexRoute(t *testing.T) {
 
 **Tools Used:**
 - `delve` (dlv) - Official Go debugger
-- VS Code with Go extension
+- JetBrains GoLand IDE
 - `fmt` package for print debugging
 - `log` package for structured logging
 - Gin's built-in debug mode
