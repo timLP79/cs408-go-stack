@@ -26,6 +26,17 @@ A simple full-stack web application built with Go, Gin web framework, and SQLite
 
 **Overall Progress:** 2/11 issues completed
 
+## Documentation Directory
+
+| File | Description |
+|------|-------------|
+| [`plan.md`](./plan.md) | Technical implementation plan |
+| [`tutorials/GO_LEARNING_GUIDE.md`](./tutorials/GO_LEARNING_GUIDE.md) | Go syntax reference |
+| [`week3/BOOTSTRAP_INTEGRATION_GUIDE.md`](./week3/BOOTSTRAP_INTEGRATION_GUIDE.md) | Bootstrap 5 integration guide |
+| [`week3/TESTING_AND_DEBUGGING_GUIDE.md`](./week3/TESTING_AND_DEBUGGING_GUIDE.md) | Testing and debugging tutorial |
+| [`week3/tech-stack-survey.md`](./week3/tech-stack-survey.md) | Tech stack comparison |
+| [`week3/CANVAS_DISCUSSION_POST.md`](./week3/CANVAS_DISCUSSION_POST.md) | Hello World assignment submission |
+
 ### What I've Learned So Far
 
 **Milestone 1 - Hello World Accomplishments:**
@@ -126,14 +137,19 @@ go-full-stack/
 │   └── images/                      # Image assets
 ├── screenshots/                     # Project screenshots for documentation
 ├── data/                            # SQLite database (gitignored)
+├── docs/
+│   ├── README.md                    # This file (full project documentation)
+│   ├── plan.md                      # Technical implementation plan
+│   ├── tutorials/
+│   │   └── GO_LEARNING_GUIDE.md     # Go syntax reference
+│   └── week3/
+│       ├── BOOTSTRAP_INTEGRATION_GUIDE.md
+│       ├── TESTING_AND_DEBUGGING_GUIDE.md
+│       ├── tech-stack-survey.md
+│       └── CANVAS_DISCUSSION_POST.md
 ├── go.mod                           # Go module definition
 ├── go.sum                           # Dependency checksums
-├── README.md                        # This file
-├── GO_LEARNING_GUIDE.md             # Go syntax reference
-├── TESTING_AND_DEBUGGING_GUIDE.md   # Testing and debugging tutorial
-├── BOOTSTRAP_INTEGRATION_GUIDE.md   # Bootstrap integration guide
-├── tech-stack-survey.md             # Tech stack comparison and choice
-└── CANVAS_DISCUSSION_POST.md        # Hello World assignment submission
+└── README.md                        # Project intro and quick start
 ```
 
 ## Getting Started
@@ -256,10 +272,10 @@ Go templates use `{{ }}` for expressions:
 ## Learning Resources
 
 ### Project Documentation
-- [GO_LEARNING_GUIDE.md](./GO_LEARNING_GUIDE.md) - Go syntax guide with examples from this project
-- [TESTING_AND_DEBUGGING_GUIDE.md](./TESTING_AND_DEBUGGING_GUIDE.md) - Comprehensive testing and debugging tutorial
-- [BOOTSTRAP_INTEGRATION_GUIDE.md](./BOOTSTRAP_INTEGRATION_GUIDE.md) - Bootstrap integration guide
-- [tech-stack-survey.md](./tech-stack-survey.md) - Tech stack comparison and rationale
+- [GO_LEARNING_GUIDE.md](./tutorials/GO_LEARNING_GUIDE.md) - Go syntax guide with examples from this project
+- [TESTING_AND_DEBUGGING_GUIDE.md](./week3/TESTING_AND_DEBUGGING_GUIDE.md) - Comprehensive testing and debugging tutorial
+- [BOOTSTRAP_INTEGRATION_GUIDE.md](./week3/BOOTSTRAP_INTEGRATION_GUIDE.md) - Bootstrap integration guide
+- [tech-stack-survey.md](./week3/tech-stack-survey.md) - Tech stack comparison and rationale
 
 ### External Resources
 - [Gin Documentation](https://gin-gonic.com/docs/)
@@ -391,7 +407,7 @@ func TestSomething(t *testing.T) {
 }
 ```
 
-**Status:** ✅ Testing infrastructure set up - see [TESTING_AND_DEBUGGING_GUIDE.md](./TESTING_AND_DEBUGGING_GUIDE.md) for complete tutorial
+**Status:** ✅ Testing infrastructure set up - see [TESTING_AND_DEBUGGING_GUIDE.md](./week3/TESTING_AND_DEBUGGING_GUIDE.md) for complete tutorial
 
 ### Debugging Tools
 
@@ -413,7 +429,7 @@ This project uses multiple debugging approaches:
    - Debug tests with right-click "Debug" option
    - Keyboard shortcuts: F7 (Step Into), F8 (Step Over), F9 (Resume)
 
-See [TESTING_AND_DEBUGGING_GUIDE.md](./TESTING_AND_DEBUGGING_GUIDE.md) for detailed debugging tutorials and examples.
+See [TESTING_AND_DEBUGGING_GUIDE.md](./week3/TESTING_AND_DEBUGGING_GUIDE.md) for detailed debugging tutorials and examples.
 
 ## Deployment
 
