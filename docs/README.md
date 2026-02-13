@@ -4,6 +4,14 @@ A simple full-stack web application built with Go, Gin web framework, and SQLite
 
 **CS408 Spring 2026 Project** | [GitHub Issues](https://github.com/timLP79/cs408-go-stack/issues) | [Project Board](https://github.com/timLP79/cs408-go-stack/projects)
 
+## Technology Stack
+
+- **Language**: Go 1.22+
+- **Web Framework**: [Gin](https://github.com/gin-gonic/gin)
+- **Database**: SQLite (via [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) - pure Go, no CGo)
+- **Templating**: Go `html/template` with layout pattern
+- **CSS**: Bootstrap 5 (CDN)
+
 ## Project Status
 
 **Current Sprint:** Sprint 1 - Foundation (Week 1-2)
@@ -111,14 +119,6 @@ Issues are organized with these labels:
 - `learning` - Educational value
 - `blocked` - Waiting on dependencies
 - `milestone` - Major deliverables
-
-## Technology Stack
-
-- **Language**: Go 1.22+
-- **Web Framework**: [Gin](https://github.com/gin-gonic/gin)
-- **Database**: SQLite (via [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) - pure Go, no CGo)
-- **Templating**: Go `html/template` with layout pattern
-- **CSS**: Bootstrap 5 (CDN)
 
 ## Project Structure
 
