@@ -12,6 +12,19 @@ A simple full-stack web application built with Go, Gin web framework, and SQLite
 - **Templating**: Go `html/template` with layout pattern
 - **CSS**: Bootstrap 5 (CDN)
 
+## Team Workflow
+
+This is a solo developer project.
+
+**Developer:** Tim ([@timLP79](https://github.com/timLP79))
+
+### Workflow
+- **GitHub Issues** — every feature, bug, and task is tracked as an issue with labels and milestones
+- **GitHub Projects (Kanban)** — issues are organized on a board with columns: Backlog → In Progress → Done
+- **Feature Branches** — new work is done on a branch (e.g. `feature/database-layer`), then merged to `main` via pull request
+- **CI on merge** — GitHub Actions runs all tests automatically on every push to `main`
+- **Commit references** — commits use `Closes #N` syntax to auto-close issues on merge
+
 ## Project Status
 
 **Current Sprint:** Sprint 1 - Foundation (Week 1-2)
