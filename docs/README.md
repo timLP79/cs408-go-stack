@@ -112,7 +112,7 @@ Issues are organized with these labels:
 - `blocked` - Waiting on dependencies
 - `milestone` - Major deliverables
 
-## Tech Stack
+## Technology Stack
 
 - **Language**: Go 1.22+
 - **Web Framework**: [Gin](https://github.com/gin-gonic/gin)
