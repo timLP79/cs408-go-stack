@@ -6,7 +6,7 @@ A simple full-stack web application built with Go, Gin web framework, and SQLite
 
 ## Tech Stack
 
-- **Go 1.22+** with [Gin](https://github.com/gin-gonic/gin) web framework
+- **Go 1.24+** with [Gin](https://github.com/gin-gonic/gin) web framework
 - **SQLite** via [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) (pure Go, no CGo)
 - **Go `html/template`** with layout pattern
 - **Bootstrap 5** (CDN)
@@ -15,7 +15,7 @@ A simple full-stack web application built with Go, Gin web framework, and SQLite
 
 ```bash
 git clone https://github.com/timLP79/cs408-go-stack.git
-cd go-full-stack
+cd cs408-go-stack
 go mod download
 go run .
 ```
@@ -28,6 +28,7 @@ Full project documentation is in the [`docs/`](./docs/) folder, including:
 
 - Project status, sprint plan, and learning notes
 - [Technical implementation plan](./docs/plan.md)
+- [Deployment guide (EC2 + systemd)](./docs/week6/deployment.md)
 - [Go learning guide](./docs/tutorials/GO_LEARNING_GUIDE.md)
 - [Bootstrap integration guide](./docs/week3/BOOTSTRAP_INTEGRATION_GUIDE.md)
 - [Testing and debugging guide](./docs/week3/TESTING_AND_DEBUGGING_GUIDE.md)

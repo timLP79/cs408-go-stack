@@ -6,7 +6,7 @@ A simple full-stack web application built with Go, Gin web framework, and SQLite
 
 ## Technology Stack
 
-- **Language**: Go 1.22+
+- **Language**: Go 1.24+
 - **Web Framework**: [Gin](https://github.com/gin-gonic/gin)
 - **Database**: SQLite (via [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) - pure Go, no CGo)
 - **Templating**: Go `html/template` with layout pattern
@@ -52,6 +52,7 @@ This is a solo developer project.
 | File | Description |
 |------|-------------|
 | [`plan.md`](./plan.md) | Technical implementation plan |
+| [`week6/deployment.md`](./week6/deployment.md) | EC2 deployment guide (systemd) |
 | [`tutorials/GO_LEARNING_GUIDE.md`](./tutorials/GO_LEARNING_GUIDE.md) | Go syntax reference |
 | [`week3/BOOTSTRAP_INTEGRATION_GUIDE.md`](./week3/BOOTSTRAP_INTEGRATION_GUIDE.md) | Bootstrap 5 integration guide |
 | [`week3/TESTING_AND_DEBUGGING_GUIDE.md`](./week3/TESTING_AND_DEBUGGING_GUIDE.md) | Testing and debugging tutorial |
@@ -150,16 +151,20 @@ go-full-stack/
 │   └── images/                      # Image assets
 ├── screenshots/                     # Project screenshots for documentation
 ├── data/                            # SQLite database (gitignored)
+├── deploy/
+│   └── go-full-stack.service        # systemd unit file for EC2
 ├── docs/
 │   ├── README.md                    # This file (full project documentation)
 │   ├── plan.md                      # Technical implementation plan
 │   ├── tutorials/
 │   │   └── GO_LEARNING_GUIDE.md     # Go syntax reference
-│   └── week3/
-│       ├── BOOTSTRAP_INTEGRATION_GUIDE.md
-│       ├── TESTING_AND_DEBUGGING_GUIDE.md
-│       ├── tech-stack-survey.md
-│       └── CANVAS_DISCUSSION_POST.md
+│   ├── week3/
+│   │   ├── BOOTSTRAP_INTEGRATION_GUIDE.md
+│   │   ├── TESTING_AND_DEBUGGING_GUIDE.md
+│   │   ├── tech-stack-survey.md
+│   │   └── CANVAS_DISCUSSION_POST.md
+│   └── week6/
+│       └── deployment.md            # EC2 deployment guide
 ├── go.mod                           # Go module definition
 ├── go.sum                           # Dependency checksums
 └── README.md                        # Project intro and quick start
@@ -169,7 +174,7 @@ go-full-stack/
 
 ### Prerequisites
 
-- Go 1.22 or higher
+- Go 1.24 or higher
 - Git
 
 ### Installation
@@ -446,7 +451,9 @@ See [TESTING_AND_DEBUGGING_GUIDE.md](./week3/TESTING_AND_DEBUGGING_GUIDE.md) for
 
 ## Deployment
 
-(To be documented)
+The app is deployed to an Ubuntu EC2 instance as a systemd service. See the full guide:
+
+- [docs/week6/deployment.md](./week6/deployment.md) — step-by-step EC2 setup, systemd config, and verification
 
 ## Contributing
 
