@@ -45,8 +45,8 @@ go version
 ### 3. Clone the repo
 
 ```bash
-git clone https://github.com/timLP79/cs408-go-stack.git go-full-stack
-cd go-full-stack
+git clone https://github.com/timLP79/cs408-go-stack.git cs408-go-stack
+cd cs408-go-stack
 ```
 
 ### 4. Build the binary
