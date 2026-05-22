@@ -1,0 +1,55 @@
+{{define "content"}}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1 class="mb-1">Overdue Report</h1>
+        <p class="text-muted mb-0">
+            {{if .TotalLoans}}{{.TotalLoans}} overdue {{if eq .TotalLoans 1}}loan{{else}}loans{{end}} across {{len .Groups}} {{if eq (len .Groups) 1}}patron{{else}}patrons{{end}}.{{else}}No overdue loans. Everything is on time.{{end}}
+        </p>
+    </div>
+    <a href="/loans?filter=overdue" class="btn btn-outline-secondary">Loans View</a>
+</div>
+
+{{if .Groups}}
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Patron / Book</th>
+                    <th>Due Date</th>
+                    <th>Days Overdue</th>
+                    <th class="text-end">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Groups}}
+                <tr class="table-light">
+                    <td>
+                        <strong>{{.PatronName}}</strong>
+                        <span class="text-muted">&middot; {{len .Loans}} {{if eq (len .Loans) 1}}item{{else}}items{{end}}</span>
+                    </td>
+                    <td></td>
+                    <td></td>
+                    <td class="text-end">
+                        <a href="/reports/overdue/patron/{{.PatronID}}/notice" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener">
+                            Print Notice
+                        </a>
+                    </td>
+                </tr>
+                {{range .Loans}}
+                <tr>
+                    <td class="ps-4">
+                        <a href="/books/{{.BookID}}" class="text-decoration-none" style="color: #1e3a5f;">{{.BookTitle}}</a>
+                    </td>
+                    <td>{{.DueDate}}</td>
+                    <td><span class="badge badge-checked-out">{{.DaysOverdue}} {{if eq .DaysOverdue 1}}day{{else}}days{{end}}</span></td>
+                    <td></td>
+                </tr>
+                {{end}}
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+</div>
+{{end}}
+{{end}}

@@ -1,0 +1,111 @@
+{{define "content"}}
+<style>
+    .overdue-notice {
+        max-width: 7.5in;
+        margin: 0 auto;
+        font-family: Georgia, 'Times New Roman', serif;
+        color: #000;
+    }
+    .overdue-notice h1 {
+        font-size: 1.6rem;
+        margin-bottom: 0.25rem;
+    }
+    .overdue-notice .notice-date {
+        font-size: 0.95rem;
+        color: #444;
+        margin-bottom: 2rem;
+    }
+    .overdue-notice .patron-block {
+        margin-bottom: 1.5rem;
+        line-height: 1.5;
+    }
+    .overdue-notice .patron-block .patron-name {
+        font-weight: bold;
+        font-size: 1.05rem;
+    }
+    .overdue-notice .standard-text {
+        margin: 1.5rem 0;
+    }
+    .overdue-notice table.items {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1.5rem;
+    }
+    .overdue-notice table.items th,
+    .overdue-notice table.items td {
+        text-align: left;
+        padding: 0.5rem 0.6rem;
+        border-bottom: 1px solid #999;
+    }
+    .overdue-notice table.items th {
+        border-bottom: 2px solid #000;
+        font-weight: bold;
+    }
+    .overdue-notice .footer-block {
+        margin-top: 2rem;
+        padding-top: 1rem;
+        border-top: 1px solid #999;
+        font-size: 0.9rem;
+        color: #444;
+    }
+    .overdue-notice .print-actions {
+        margin-bottom: 1.5rem;
+    }
+
+    @media print {
+        @page { margin: 1in; }
+        body { background: #fff; }
+        nav, .sidebar, .sidebar-topbar, footer, .print-actions { display: none !important; }
+        .flex-grow-1 { padding: 0 !important; }
+        .overdue-notice { max-width: 100%; }
+    }
+</style>
+
+<div class="overdue-notice">
+    <div class="print-actions d-flex justify-content-between align-items-center">
+        <a href="/reports/overdue" class="btn btn-sm btn-outline-secondary">&larr; Back to report</a>
+        <button type="button" class="btn btn-sm btn-primary" onclick="window.print()" style="background-color: #1e3a5f; border-color: #1e3a5f;">
+            Print
+        </button>
+    </div>
+
+    <h1>LibreShelf Library</h1>
+    <div class="notice-date">Notice date: {{.NoticeDate}}</div>
+
+    <div class="patron-block">
+        <div class="patron-name">{{.Patron.Name}}</div>
+        {{if .Patron.Address}}{{with deref .Patron.Address}}<div style="white-space: pre-line;">{{.}}</div>{{end}}{{end}}
+        {{if .Patron.Email}}<div>{{deref .Patron.Email}}</div>{{end}}
+        {{if .Patron.Phone}}<div>{{deref .Patron.Phone}}</div>{{end}}
+    </div>
+
+    <div class="standard-text">
+        Our records show that the following item{{if gt (len .Loans) 1}}s are{{else}} is{{end}} past due. Please return {{if gt (len .Loans) 1}}them{{else}}it{{end}} to the library at your earliest convenience.
+    </div>
+
+    <table class="items">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Author</th>
+                <th>Due Date</th>
+                <th>Days Overdue</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Loans}}
+            <tr>
+                <td>{{.Title}}</td>
+                <td>{{.Authors}}</td>
+                <td>{{.DueDate}}</td>
+                <td>{{.DaysOverdue}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+
+    <div class="footer-block">
+        Questions about this notice? Contact the library staff. Thank you for being a patron.
+    </div>
+</div>
+{{end}}
