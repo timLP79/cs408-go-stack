@@ -131,6 +131,18 @@ func HandleAdmin(c *gin.Context) {
 }
 
 func HandleNotFound(c *gin.Context) {
+	// router.NoRoute fires outside the auth middleware groups, so the
+	// "user" context key would be empty even for logged-in users hitting
+	// an unknown URL. Resolve the session here so the error template
+	// can pick the right CTAs. Silent fail-through to the anonymous
+	// branch on any error (no cookie, expired session, etc).
+	if _, exists := c.Get("user"); !exists {
+		if token, err := c.Cookie("session"); err == nil {
+			if session, err := getDB(c).GetSession(token); err == nil {
+				c.Set("user", session.User)
+			}
+		}
+	}
 	c.Status(http.StatusNotFound)
 	renderTemplate(c, "error", gin.H{
 		"Title":   "Not Found",

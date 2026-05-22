@@ -506,6 +506,52 @@ func TestNotFoundReturns404(t *testing.T) {
 	}
 }
 
+// TestNotFoundShowsAnonymousCTAsWhenLoggedOut pins the existing behavior
+// for unauthenticated users hitting an unknown URL: the error page
+// shows Sign in + Browse the catalog (kiosk).
+func TestNotFoundShowsAnonymousCTAsWhenLoggedOut(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	req, _ := http.NewRequest("GET", "/doesnotexist", nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	body := rr.Body.String()
+	if !strings.Contains(body, "Sign in") {
+		t.Errorf("anonymous 404 should show Sign in CTA")
+	}
+	if strings.Contains(body, "Go back home") {
+		t.Errorf("anonymous 404 should not show logged-in CTA")
+	}
+}
+
+// TestNotFoundShowsLoggedInCTAsForUnknownURL pins the fix for
+// cs408-go-stack-vih: router.NoRoute fires outside the auth middleware
+// groups, so HandleNotFound must resolve the session itself so the
+// error template can show "Go back home" + "Browse the catalog"
+// instead of the anonymous Sign in CTA when the user is actually
+// logged in.
+func TestNotFoundShowsLoggedInCTAsForUnknownURL(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, _ := loginAs(t, dm, "staff_404_cta", "staff")
+
+	req, _ := http.NewRequest("GET", "/doesnotexist", nil)
+	req.AddCookie(sess)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "Go back home") {
+		t.Errorf("logged-in 404 should show Go back home CTA; body=%s", body)
+	}
+	if strings.Contains(body, "Sign in") {
+		t.Errorf("logged-in 404 should not show Sign in CTA")
+	}
+}
+
 func TestBookDetailNotFoundReturns404(t *testing.T) {
 	router, dm := setupTestRouter(t)
 	sess, _ := loginAs(t, dm, "admin", "admin")
