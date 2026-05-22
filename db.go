@@ -63,6 +63,14 @@ type LoanListRow struct {
 	DaysOverdue int
 }
 
+type OverdueNoticeRow struct {
+	BookID      int
+	Title       string
+	Authors     string
+	DueDate     string
+	DaysOverdue int
+}
+
 type StaffMember struct {
 	ID        int
 	Username  string
@@ -420,6 +428,37 @@ func (dm *DatabaseManager) GetPatronActiveLoans(patronID int) ([]LoanListRow, er
 		var r LoanListRow
 		if err := rows.Scan(&r.LoanID, &r.BookID, &r.BookTitle,
 			&r.PatronID, &r.PatronName, &r.DueDate, &r.DaysOverdue); err != nil {
+			return nil, err
+		}
+		loans = append(loans, r)
+	}
+	return loans, rows.Err()
+}
+
+func (dm *DatabaseManager) GetPatronOverdueLoansForNotice(patronID int) ([]OverdueNoticeRow, error) {
+	rows, err := dm.db.Query(`
+		SELECT b.id, b.title,
+		       COALESCE(GROUP_CONCAT(a.name, ', '), '') AS authors,
+		       l.due_date,
+		       CAST(julianday('now') - julianday(l.due_date) AS INTEGER) AS days_overdue
+		FROM loans l
+		JOIN books b ON l.book_id = b.id
+		LEFT JOIN book_authors ba ON b.id = ba.book_id
+		LEFT JOIN authors a ON ba.author_id = a.id
+		WHERE l.returned_at IS NULL
+		  AND l.due_date < DATE('now')
+		  AND l.patron_id = ?
+		GROUP BY l.id
+		ORDER BY l.due_date ASC`, patronID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var loans []OverdueNoticeRow
+	for rows.Next() {
+		var r OverdueNoticeRow
+		if err := rows.Scan(&r.BookID, &r.Title, &r.Authors, &r.DueDate, &r.DaysOverdue); err != nil {
 			return nil, err
 		}
 		loans = append(loans, r)

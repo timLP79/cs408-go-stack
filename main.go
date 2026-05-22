@@ -76,6 +76,7 @@ func main() {
 	templateNames := []string{
 		"index", "catalog", "book_detail", "book_form",
 		"patrons", "admin", "staff", "loans", "my_loans",
+		"reports_overdue", "overdue_notice",
 		"backup_admin", "admin_settings",
 		"admin_patrons_import", "admin_patrons_import_preview", "admin_patrons_import_result",
 		"patron_login_credentials",
@@ -177,6 +178,8 @@ func main() {
 	staff.POST("/books/:id/checkout", HandleCheckout)
 	staff.POST("/loans/:id/return", HandleReturn)
 	staff.GET("/loans", HandleLoansList)
+	staff.GET("/reports/overdue", HandleReportsOverdue)
+	staff.GET("/reports/overdue/patron/:id/notice", HandleOverdueNotice)
 
 	// Admin-only routes (read-locked like everything else)
 	admin := router.Group("/")
