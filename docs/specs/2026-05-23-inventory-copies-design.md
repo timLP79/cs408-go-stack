@@ -29,10 +29,13 @@ implementation; this refactor is the prerequisite, and yu3 gets rebuilt
 on top of the new model at the end of the chain.
 
 DEC-036 (2026-05-16) covers idempotent additive `ALTER TABLE` migrations
-in `createSchema`. The decision body explicitly says: "When a
-non-additive change is needed -- column rename, NOT NULL with no
-default, table drop -- we revisit then." This refactor is the revisit.
-DEC-037 (this spec) documents the non-additive migration approach.
+in `createSchema` and was originally driven by the CS408 EC2 deployment's
+production data. That deployment was retired post-class; LibreShelf has
+no live deployment as of 2026-05-23. DEC-037 (this spec) takes advantage
+of the no-deployment-today state and ships the reshape via a local DB
+wipe rather than a migration function. Any future deployment will need
+a real migration for the next non-additive change; that design lives
+in DEC-037's "future deployment" note.
 
 ## Goals
 
@@ -50,16 +53,21 @@ DEC-037 (this spec) documents the non-additive migration approach.
 - The legacy book-detail Check Out form keeps working but now requires
   the staffer to scan / type the barcode of the specific copy leaving
   the shelf (no auto-pick).
-- Existing data on the EC2 deployment migrates without manual cleanup:
-  every current `quantity_available` slot becomes a copy row with an
-  auto-generated LSF barcode and `needs_relabel=true` so the librarian
-  can pull a re-label report later.
+- No live deployment exists today (CS408 EC2 retired post-class), so
+  the schema reshape ships via local DB wipe + re-seed, not a
+  migration function. The `needs_relabel` column is still added to
+  `copies` for future use: it carries the "auto-generated, please
+  re-label" flag for any code path that bulk-creates copies (e.g. a
+  future "import existing inventory" flow), even though the foundation
+  issue does not have such a path.
 
 ## Non-goals
 
-- No real migration framework. The non-additive migration is a one-off
-  function gated on `copies`-table-absent, called from `createSchema`
-  before normal table setup. We are not adopting goose, dbmate, etc.
+- No migration function. No live deployment exists; the reshape ships
+  via local DB wipe + re-seed. A future deployment that needs to
+  preserve data across a non-additive change will need a migration
+  function designed then, per the DEC-037 "future deployment" note.
+  We are not adopting goose, dbmate, or any framework.
 - No automatic format detection from a scanner emit. The staffer picks
   the format at add-a-copy time; the system validates the digits match
   the chosen format (length + checksum). A future enhancement could
@@ -119,64 +127,58 @@ ALTER TABLE books ADD COLUMN dewey TEXT;
   whatever the librarian enters and treat the author-prefix on the
   label as a separate computed field.
 
-### Migration of `loans`
+### `loans` shape change
+
+The new `loans` table is created directly in the new shape (no `book_id`
+column, `copy_id INTEGER NOT NULL REFERENCES copies(id)`). On a fresh
+DB this is a one-shot CREATE; there is no rename / rebuild dance
+because there is no pre-existing data to preserve.
 
 ```sql
-ALTER TABLE loans ADD COLUMN copy_id INTEGER REFERENCES copies(id);
--- backfill copy_id from each loan's current book_id
--- drop book_id column (SQLite 3.35+ supports DROP COLUMN)
-ALTER TABLE loans DROP COLUMN book_id;
+CREATE TABLE loans (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    copy_id         INTEGER NOT NULL REFERENCES copies(id),
+    patron_id       INTEGER NOT NULL REFERENCES patrons(id),
+    checked_out_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    due_date        TEXT NOT NULL,
+    returned_at     DATETIME
+);
 ```
 
-Backfill detail: for each loan, find the lowest-id copy of the loan's
-`book_id` and link. Since migration auto-creates exactly
-`quantity_total` copies per book and there is at most one active loan
-per quantity slot, this assignment is deterministic. Returned loans
-also link cleanly; the copy may have been returned and re-loaned since,
-but the historical row links to the original physical copy.
+### `books` shape change
 
-### Drop on `books`
+The CREATE TABLE statement for `books` ships without `quantity_total`
+and `quantity_available`, and includes the new `dewey` column. Existing
+counter logic is removed from `CheckoutBook`, `ReturnBook`, `CreateBook`,
+`UpdateBook`, `GetBookByID`, `GetAllBooks`, etc.; those handlers move
+to deriving availability from `copies` instead.
 
-```sql
-ALTER TABLE books DROP COLUMN quantity_total;
-ALTER TABLE books DROP COLUMN quantity_available;
-```
+`quantity_available` becomes a derived count:
+`SELECT COUNT(*) FROM copies WHERE book_id = ? AND status = 'available' AND id NOT IN (SELECT copy_id FROM loans WHERE returned_at IS NULL)`.
+`quantity_total` becomes
+`SELECT COUNT(*) FROM copies WHERE book_id = ? AND status != 'withdrawn'`.
+We do not cache these; the per-book display query takes the join hit.
 
-`quantity_available` becomes a derived count: `SELECT COUNT(*) FROM
-copies WHERE book_id = ? AND status = 'available' AND id NOT IN
-(SELECT copy_id FROM loans WHERE returned_at IS NULL)`. `quantity_total`
-becomes `SELECT COUNT(*) FROM copies WHERE book_id = ? AND status !=
-'withdrawn'`. We do not cache these; the per-book display query takes
-the join hit.
+### Schema-reshape mechanics
 
-### Migration mechanics
+No migration function. The foundation issue ships:
 
-A new function `migrateToCopies(db *sql.DB) error` lives in `db.go` and
-is called from `createSchema` BEFORE the normal `CREATE TABLE IF NOT
-EXISTS` block. The function:
+1. Updated `CREATE TABLE` statements in `createSchema` for the new
+   `books`, `loans`, and `copies` shapes (plus indexes).
+2. An additive `ALTER TABLE books ADD COLUMN dewey TEXT` line in the
+   DEC-036 idempotent block so that re-seeding a fresh DB always
+   has the column even if the CREATE TABLE somehow ran an older
+   string (defense in depth; on a wiped DB the CREATE TABLE always
+   wins, the ALTER fails with "duplicate column" and is swallowed).
+3. A README / CLAUDE.md gotcha note: `rm data/database.sqlite*`
+   before running the new code on a machine that has the pre-DEC-037
+   schema. After the wipe, `SeedBooks` re-populates the seed catalog
+   in the new shape.
 
-1. Checks if `copies` table exists via `sqlite_master`. If yes, returns
-   nil (migration already ran).
-2. Opens a transaction.
-3. Runs the schema changes above.
-4. For each book row, generates `quantity_total` LSF barcodes (each
-   `LSF` + 7-digit sequence + Luhn check digit, sequence is monotonic
-   across the whole migration), inserts copy rows with
-   `needs_relabel=1`.
-5. Backfills `loans.copy_id`.
-6. Drops the old columns.
-7. Commits.
-
-If any step fails, the transaction rolls back and the app fails to
-start. We do not partial-apply this migration; the surface is small
-enough to wrap in one transaction.
-
-The migration runs exactly once per database (gate on table existence).
-Subsequent app restarts skip the function and proceed to normal
-`CREATE TABLE IF NOT EXISTS copies` (no-op on existing tables) plus
-the additive DEC-036 block. This means the migration code lives in the
-binary forever as a one-shot; that is acceptable given the
-single-deployment shape of LibreShelf.
+There is no `migrateToCopies` function. If LibreShelf gains a live
+deployment in the future and the next non-additive change needs to
+preserve data, that migration is designed then, per the DEC-037
+"future deployment" note.
 
 ## Library barcode format (LSF)
 
@@ -377,17 +379,17 @@ Dewey:
 
 ## Test plan
 
-### Migration tests (foundation issue)
+### Seed + schema tests (foundation issue)
 
-- Fresh DB: `migrateToCopies` runs, creates table, no books exist,
-  zero copies created. Subsequent restart: gate skips migration.
-- Seeded DB: each seeded book gets `quantity_total` copies with
-  `needs_relabel=1`. LSF codes are unique and monotonic. All
-  existing loans link to a copy of the right `book_id`.
-- DB with returned loans: returned loans link to a copy. Active
-  loans link to an available-marked copy of the same book.
-- Idempotency: running the migration function twice (forced) returns
-  early on the second call without error.
+- Fresh DB on first run: `createSchema` produces the new shape;
+  `SeedBooks` populates the catalog with zero copies (seed books
+  have no copies until the librarian adds them via the
+  add-a-copy flow).
+- Re-running on an already-initialized DB: `CREATE TABLE IF NOT EXISTS`
+  is a no-op; the additive `ALTER TABLE books ADD COLUMN dewey`
+  swallows "duplicate column".
+- The wipe-and-re-seed path (delete `data/database.sqlite*`, restart)
+  produces the same end state as a brand-new install.
 
 ### Schema tests
 
@@ -430,10 +432,15 @@ Six issues, dependency ordering noted. The whole chain is roughly
 CP8-sized; targeting "ship one issue per week" so the chain lands
 across June 2026.
 
-1. **Foundation** (`cs408-go-stack-e9a`, P1). Schema, `migrateToCopies`, copies table,
-   `books.dewey` column, LSF barcode generator, single-copy
-   library-format add on book detail, book-detail Check Out barcode
-   prompt, migration tests, schema tests. Blocks everything else.
+1. **Foundation** (`cs408-go-stack-e9a`, P1). Schema reshape (new
+   `books` / `loans` / `copies` shapes in `createSchema`; local wipe
+   documented in CLAUDE.md), `books.dewey` column, LSF barcode
+   generator, rewrite of every handler / DB method that currently
+   reads or writes `books.quantity_*` or `loans.book_id` to use
+   `copies` instead, single-copy library-format add on book detail,
+   book-detail Check Out barcode prompt, seed + schema tests, handler
+   tests for the new add-a-copy and Check Out paths. Blocks
+   everything else.
 2. **Multi-format copy entry + bulk add** (`cs408-go-stack-stb`, P2). Format selector in
    add-a-copy modal (Code 128 / Code 39 / EAN-13 / UPC-A) with
    per-format validation, "Add N copies" bulk variant for library

@@ -99,7 +99,7 @@ when he does, switch to showing code without writing it and explaining each piec
 | Templating | Go `html/template` with layout pattern |
 | Database | SQLite via `modernc.org/sqlite` (pure Go, no CGo) |
 | CSS | Bootstrap 5.3 (served locally, no CDN) |
-| Deployment | EC2 + systemd + nginx |
+| Deployment | systemd + nginx behind a reverse proxy (host-agnostic VPS; CS408 ran on EC2, retired post-class) |
 
 ---
 
@@ -113,7 +113,7 @@ go test -v -run TestX   # run a specific test
 sqlite3 data/database.sqlite  # inspect the local DB
 ```
 
-Deploy guide: `docs/deployment.md` (build, scp, systemctl).
+Deploy guide: `docs/deployment.md` (stale, EC2-specific recipe from CS408; host-agnostic rewrite pending). `deploy/libreshelf.service` is the systemd unit and remains the canonical reference for service shape.
 
 ---
 
@@ -126,22 +126,23 @@ Deploy guide: `docs/deployment.md` (build, scp, systemctl).
 
 ## Infrastructure
 
-- Deployed via systemd service (`deploy/libreshelf.service`)
+- systemd service unit at `deploy/libreshelf.service`
 - Reverse proxy: nginx
 - Secrets: environment variables (PORT, DATA_DIR, DB_NAME, ADMIN_PASSWORD)
 - Database file: `data/database.sqlite` (gitignored)
-- HTTPS: not available on bare IP deployment; HTTP-only is acceptable for class
+- HTTPS: expected via the reverse proxy when behind a domain; HSTS gated on `APP_ENV=production`
+- Host: VPS-agnostic (CS408 ran on EC2, retired post-class; future deploy could be a DigitalOcean droplet, Hetzner, etc.). No live deployment as of 2026-05-23
 
 ---
 
 ## Current State
 
-All checkpoints complete. CP1-CP4 shipped over weeks 3-5. CP5 closed 2026-04-18 (6 days early). CP6 closed 2026-04-25 (PR #42, 169 tests). CP7 closed 2026-05-01 across PRs #74 / #75 / #76, deployed to EC2 the same day. Test coverage 74.9% on `libreshelf`, 87.5% on `internal/safezip`, 75.2% overall after the al3 follow-up landed 2026-05-12 (header-gated handler DB-fault scaffolding in `setupTestRouter`).
+All CS408 checkpoints complete. CP1-CP4 shipped over weeks 3-5. CP5 closed 2026-04-18 (6 days early). CP6 closed 2026-04-25 (PR #42, 169 tests). CP7 closed 2026-05-01 across PRs #74 / #75 / #76; the CS408 EC2 deploy went live the same day and was retired post-class. No live deployment exists today; new work targets a host-agnostic redeploy when a new VPS is chosen. Test coverage 74.9% on `libreshelf`, 87.5% on `internal/safezip`, 75.2% overall after the al3 follow-up landed 2026-05-12 (header-gated handler DB-fault scaffolding in `setupTestRouter`).
 
 For per-checkpoint detail:
 - `bd memories cp5-architecture` -- staff / book / patron CRUD, OL integration, cover validation
 - `bd memories cp6-architecture` -- loans + dashboard + kiosk + role-differentiated routing
-- `DECISIONS.md` -- DEC-001 through DEC-036 (DEC-027: backup design; DEC-028: security hardening; DEC-029: admin tools-index pattern; DEC-030: CSV patron import; DEC-031: SQLite busy_timeout + provable TOCTOU safety; DEC-032: Open Library metadata enrichment chain -- no Wikipedia; DEC-033/034: offline-mode predicate + env-var-as-lock precedence flip; DEC-035: Google Books fallback + field-level enrichment over Open Library; DEC-036: idempotent additive ALTER TABLE migrations in createSchema)
+- `DECISIONS.md` -- DEC-001 through DEC-037 (DEC-027: backup design; DEC-028: security hardening; DEC-029: admin tools-index pattern; DEC-030: CSV patron import; DEC-031: SQLite busy_timeout + provable TOCTOU safety; DEC-032: Open Library metadata enrichment chain -- no Wikipedia; DEC-033/034: offline-mode predicate + env-var-as-lock precedence flip; DEC-035: Google Books fallback + field-level enrichment over Open Library; DEC-036: idempotent additive ALTER TABLE migrations in createSchema; DEC-037: per-physical-copy inventory + schema reshape via local wipe)
 - `git log` -- implementation history
 
 ---
@@ -165,7 +166,7 @@ For per-checkpoint detail:
 - **SQLite driver name.** `modernc.org/sqlite` registers as `"sqlite"`, not `"sqlite3"`. Don't copy-paste snippets from `mattn/go-sqlite3` docs (DEC-002).
 - **Seed passwords are fresh-install-only.** `SeedDefaultUsers` skips users that already exist. Bumping a seed value does NOT update existing rows; `rm data/database.sqlite*` to re-seed locally.
 - **Test router uses the production middleware chain** (fixed in #35). `setupTestRouter` returns `(router, dm)` and mirrors `main.go` route groups exactly. Use `loginAs(t, dm, username, role)` to get a session cookie + CSRF token, then `req.AddCookie(sess)` and set `csrf_token` on POSTs. `logoutHelper` exists for the logout path.
-- **Schema changes: additive only, no framework.** `createSchema` uses `CREATE TABLE IF NOT EXISTS` plus an idempotent `ALTER TABLE ... ADD COLUMN` block (DEC-036). Adding a new column: put it in both the `CREATE TABLE` body and an `ALTER TABLE` line that ignores the "duplicate column" error. Works on fresh and existing DBs without a wipe. Non-additive changes (rename, drop, NOT NULL with no default, type change) are NOT supported by the current pattern; design as a one-off and revisit then.
+- **Schema changes: additive only, no framework.** `createSchema` uses `CREATE TABLE IF NOT EXISTS` plus an idempotent `ALTER TABLE ... ADD COLUMN` block (DEC-036). Adding a new column: put it in both the `CREATE TABLE` body and an `ALTER TABLE` line that ignores the "duplicate column" error. Works on fresh and existing DBs without a wipe. Non-additive changes (rename, drop, NOT NULL with no default, type change) are NOT supported by the additive pattern. While no live deployment exists (true as of 2026-05-23), the path for a non-additive change is to update the `CREATE TABLE` strings to the new shape and `rm data/database.sqlite*` on each dev machine before running the new code (DEC-037 codifies this for the CP8 inventory refactor). If LibreShelf gets redeployed and accrues data, the next non-additive change will need a one-off migration function designed at that time.
 - **Go has no hot-reload.** Template edits take effect only after a process restart (templates are parsed once at startup via `template.Must` in `main.go`). Go source edits take effect only after re-running `go run .`. Symptom of forgetting: the browser sees the old behavior with no errors. If something "didn't do anything," restart the server first.
 - **Static assets cache aggressively in the browser.** `router.Static` serves `static/javascripts/app.js` and `static/stylesheets/style.css` without cache-busting query strings or asset fingerprinting, so after a JS/CSS edit the browser may still hold the prior version. Symptom: `typeof initWhateverIJustAdded` is `"undefined"` in the console even though the file on disk is current. Fix during dev: hard refresh (Ctrl+Shift+R) or keep DevTools open with "Disable cache" checked in the Network tab. Proper fix (a `?v=<build-time>` query or content-hash URL) was de-scoped from CP7; it lives in the deferred backlog.
 
@@ -184,12 +185,25 @@ For per-checkpoint detail:
 
 ## Open Issues / Current Focus
 
-CP1-CP7 closed; LibreShelf is feature-complete for CS408 submission. See `bd memories cp5-architecture` / `cp6-architecture` and `git log` for retrospective detail.
+CP1-CP7 closed; CS408 submission complete 2026-05-01. CP7 EC2 deploy retired post-class. See `bd memories cp5-architecture` / `cp6-architecture` / `inventory-copies-cp8-chain` and `git log` for retrospective detail.
+
+### Active: CP8 -- Per-copy inventory + multi-format barcodes + label printing (DEC-037, started 2026-05-23)
+
+Six-issue chain (see `docs/specs/2026-05-23-inventory-copies-design.md` for full design):
+
+- [ ] `cs408-go-stack-e9a` (P1, in_progress on `feat/inventory-copies-foundation`) -- Foundation: schema reshape (copies table, books.dewey, loans uses copy_id, no quantity columns), LSF barcode generator, single-copy library-format add, book-detail Check Out barcode prompt.
+- [ ] `cs408-go-stack-stb` (P2, blocked) -- Multi-format copy entry (Code 39 / EAN-13 / UPC-A) + bulk add N copies.
+- [ ] `cs408-go-stack-zbi` (P2, blocked) -- Manage Copies page + status editing (lost / damaged / withdrawn).
+- [ ] `cs408-go-stack-l9m` (P2, blocked) -- Print Labels + boombuler/barcode + 4 presets (sheet + roll) + calibration.
+- [ ] `cs408-go-stack-8vi` (P3, blocked) -- Dewey enrichment via OL chain.
+- [ ] `cs408-go-stack-1v5` (P2, blocked) -- Rebuild rapid-scan portal on copies model (closes paused `cs408-go-stack-yu3`).
+
+One-time wipe required when the foundation lands: `rm data/database.sqlite*` on each dev machine before running the new code. No migration function ships because no live deployment exists. Future deployments will need a migration designed at that time (DEC-037).
 
 ### CP7 -- Admin Panel + Security Hardening + Deploy (closed 2026-05-01)
 
 - [x] #23 -- Admin panel: ZIP export and import (DEC-027). Shipped via PR #74. `internal/safezip` package handles Zip Slip / symlink / absolute-path / size limits with two-pass validation. Export uses `VACUUM INTO`; import uses an in-process swap under a global `sync.RWMutex` with `.bak` rollback and live-session preservation.
-- [x] #24 -- Testing, polish, and deploy. Shipped via PR #75 + follow-up `af31e3d`. `SecurityHeaders` middleware (X-Frame-Options DENY, CSP locked to local assets, X-Content-Type-Options nosniff, Referrer-Policy same-origin, HSTS gated on APP_ENV=production), `SetTrustedProxies([]string{"127.0.0.1"})`, Go 1.25.0 -> 1.25.9 toolchain bump (cleared 19 stdlib CVEs flagged by `govulncheck`), nginx `client_max_body_size 100M` for backup imports, EC2 redeployed and verified end-to-end.
+- [x] #24 -- Testing, polish, and deploy. Shipped via PR #75 + follow-up `af31e3d`. `SecurityHeaders` middleware (X-Frame-Options DENY, CSP locked to local assets, X-Content-Type-Options nosniff, Referrer-Policy same-origin, HSTS gated on APP_ENV=production), `SetTrustedProxies([]string{"127.0.0.1"})`, Go 1.25.0 -> 1.25.9 toolchain bump (cleared 19 stdlib CVEs flagged by `govulncheck`), nginx `client_max_body_size 100M` for backup imports, deployed to the CS408 EC2 instance and verified end-to-end (instance retired post-class).
 - [x] #62 (cs408-go-stack-al3) -- Test coverage push. Shipped via PR #76 (initial 67.6%) and follow-up 2026-05-12 reaching 75.2% overall. Header-gated handler DB-fault middleware added to `setupTestRouter`: requests with `X-Test-Break-Handler-DB: 1` get a closed `*DatabaseManager` injected after auth/CSRF/DBReadLock, so the handler's first DB call hits its `err != nil` branch while middleware sees a healthy DB. Mandatory items shipped: Zip Slip rejection test, `httptest.NewServer` for OL paths, `httptest.NewServer` for cover-URL paths. No 0% in `handlers_auth.go`, `validators.go`, `openlibrary.go`, `covers.go`.
 
 ### Deferred post-submission backlog

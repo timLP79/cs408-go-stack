@@ -1,5 +1,7 @@
 # Deployment Guide: Ubuntu EC2
 
+> **STALE -- 2026-05-23.** This guide is the retired CS408 EC2 recipe. LibreShelf no longer has a live deployment, and future hosting may target any VPS (DigitalOcean droplet, Hetzner, etc.) rather than EC2 specifically. The systemd unit at `deploy/libreshelf.service`, the nginx reverse-proxy pattern, env-var configuration, and the build-and-scp flow remain applicable. The EC2-specific commands (ssh -i .pem key, security groups, ec2-public-ip) do not. Keep this file as reference until a host-agnostic rewrite lands.
+
 ## Overview
 
 The app is deployed to an Ubuntu EC2 instance as a systemd service. The binary is built
