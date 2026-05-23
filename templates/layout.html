@@ -42,14 +42,27 @@
             <div class="small" style="color: #a8c4e0; opacity: 0.7;">{{if and .User (or (eq .User.Role "admin") (eq .User.Role "staff"))}}Staff Portal{{else}}Library Portal{{end}}</div>
         </div>
         <nav class="nav flex-column flex-grow-1 gap-1">
+            <div class="sidebar-section-label">Navigation</div>
             <a class="nav-link rounded" href="/">Dashboard</a>
             <a class="nav-link rounded" href="/catalog">Catalog</a>
             {{if and .User (or (eq .User.Role "admin") (eq .User.Role "staff"))}}
-            <a class="nav-link rounded" href="/patrons">Patrons</a>
+            <a class="nav-link rounded" href="/kiosk">Kiosk</a>
             {{end}}
-            {{if and .User (eq .User.Role "admin")}}
-            <a class="nav-link rounded" href="/staff">Staff</a>
-            <a class="nav-link rounded" href="/admin">Admin</a>
+            {{if and .User (eq .User.Role "patron")}}
+            <a class="nav-link rounded" href="/my/loans">My Loans</a>
+            {{end}}
+
+            {{if and .User (or (eq .User.Role "admin") (eq .User.Role "staff"))}}
+            <div class="sidebar-section-label mt-3">Circulation</div>
+            <a class="nav-link rounded" href="/loans">Active Loans</a>
+            <a class="nav-link rounded" href="/reports/overdue">Reports</a>
+
+            <div class="sidebar-section-label mt-3">Tools</div>
+            {{if eq .User.Role "admin"}}
+            <a class="nav-link rounded" href="/admin">Admin Tools</a>
+            {{else}}
+            <a class="nav-link rounded" href="/staff-tools">Staff Tools</a>
+            {{end}}
             {{end}}
         </nav>
         {{if .User}}

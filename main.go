@@ -75,7 +75,7 @@ func main() {
 	templates = make(map[string]*template.Template)
 	templateNames := []string{
 		"index", "catalog", "book_detail", "book_form",
-		"patrons", "admin", "staff", "loans", "my_loans",
+		"patrons", "admin", "staff", "staff_tools", "loans", "my_loans",
 		"reports_overdue", "overdue_notice",
 		"backup_admin", "admin_settings",
 		"admin_patrons_import", "admin_patrons_import_preview", "admin_patrons_import_result",
@@ -180,6 +180,7 @@ func main() {
 	staff.GET("/loans", HandleLoansList)
 	staff.GET("/reports/overdue", HandleReportsOverdue)
 	staff.GET("/reports/overdue/patron/:id/notice", HandleOverdueNotice)
+	staff.GET("/staff-tools", HandleStaffTools)
 
 	// Admin-only routes (read-locked like everything else)
 	admin := router.Group("/")
