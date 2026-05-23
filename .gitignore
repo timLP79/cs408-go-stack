@@ -92,4 +92,4 @@ data/
 *.db
 .beads-credential-key
 coverage.html
-.beads/issues.jasonl
+.beads/issues.jsonl
