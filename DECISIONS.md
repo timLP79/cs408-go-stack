@@ -1300,3 +1300,51 @@ If a change needs any of those, file a bd issue, design the migration as a one-o
 - bd issue `cs408-go-stack-ygu` -- the first use; adds `patrons.address TEXT`.
 - bd issue `cs408-go-stack-wdy` -- next consumer; the printed-notice route reads this column.
 - bd memory `schema-migrations` -- pattern reference for future additive changes.
+
+---
+
+## DEC-037: Per-physical-copy inventory + non-additive one-off migration
+
+**Date:** 2026-05-23 (CP8 scope, foundation bd issue `cs408-go-stack-e9a`, spec at `docs/specs/2026-05-23-inventory-copies-design.md`).
+
+**Context:** Until now, `books` is catalog-level (one row per ISBN with `quantity_total` + `quantity_available` counters), and `loans` references `book_id`. The rapid-scan checkout portal (cs408-go-stack-yu3) surfaced the structural gap on 2026-05-22: a real library checks books out by the BARCODE on the physical item, not by the ISBN of the title. yu3 is paused on the wrong-model implementation; this decision documents the data-model refactor that unblocks it.
+
+**Decision:** Introduce a `copies` table that represents each physical book with its own unique barcode and status. Migrate `loans.book_id` to `loans.copy_id`. Drop `books.quantity_total` and `books.quantity_available`; both become derived counts over `copies`. Add `books.dewey` for spine-label printing. Support four barcode formats: `code128` (library-generated LSF prefix + 7-digit + Luhn), `code39` (legacy compatibility), `ean13` and `upca` (publisher barcodes already printed on books). Each `copies` row carries its `barcode_format` so we know how to render or re-validate.
+
+The full design including label content, print layout, UI surfaces, enrichment-chain extension, and the six-issue slicing lives in `docs/specs/2026-05-23-inventory-copies-design.md`. That document is the source of truth; this DECISIONS entry records why we are taking the non-additive migration plunge and what changes architecturally.
+
+**Why now:** yu3 cannot ship without it. The existing counter-based model produces incorrect data for any operation that needs to identify a specific physical book (lost-copy tracking, condition state, accurate label printing). Earlier checkpoints worked around the gap because they only needed availability counts; circulation at volume needs per-copy identity.
+
+**Non-additive migration approach:** DEC-036 explicitly anticipates this case ("when a non-additive change is needed... we revisit then"). We add a one-off `migrateToCopies(db *sql.DB) error` function called from `createSchema` BEFORE the normal `CREATE TABLE IF NOT EXISTS` block. The function:
+
+1. Checks if `copies` table exists via `sqlite_master`. If yes, returns nil.
+2. Opens a transaction wrapping the entire migration.
+3. Creates `copies` table + indexes.
+4. Adds `books.dewey` and `loans.copy_id` columns (additive within the migration).
+5. For each book, generates `quantity_total` LSF barcodes (monotonic 7-digit sequence + Luhn check digit), inserts copy rows with `needs_relabel=1` so the librarian can re-label later.
+6. Backfills `loans.copy_id` by linking each loan to a copy of its current `book_id`.
+7. Drops `loans.book_id`, `books.quantity_total`, `books.quantity_available` (SQLite 3.35+ `DROP COLUMN`).
+8. Commits, or rolls back on any failure.
+
+The function runs exactly once per database (gate on table existence). Subsequent restarts skip it; the code lives in the binary forever as a one-shot. Acceptable given LibreShelf's single-deployment shape; we are not adopting a migration framework.
+
+**Why a single transaction and not the DEC-036 inline ALTER style:** the changes are interlocking (cannot drop `loans.book_id` before backfilling `copy_id`; cannot drop `books.quantity_*` before deriving from copies; etc.). Partial application would leave the DB unusable. The transaction ensures either-all-or-none.
+
+**Library barcode format (LSF):** `LSF` + 7-digit zero-padded sequence + 1 Luhn check digit (total 11 chars). Rendered as Code 128 by the print pipeline. Code 128 accepts the full ASCII set including letters, so the LSF prefix encodes cleanly. The 7-digit sequence allocator is decided in the foundation issue (likely `MAX(barcode) WHERE barcode LIKE 'LSF%'` until we hit a concurrent-add race, which is theoretical at library volume).
+
+**Why these four formats and not the full retail set:** Code 128 and Code 39 cover any alphanumeric library ID; EAN-13 and UPC-A cover publisher barcodes already printed on most modern books. UPC-E, EAN-8, ITF-14, and GS1-128 add validation complexity without matching the inventory a small library actually has. The screenshot that listed all six retail formats was the prompting source; the decision after design review was to keep the set tight.
+
+**Why we accept publisher barcodes alongside library ones:** Forcing every book to wear a library sticker is real labor. Modern books arrive with EAN-13 / UPC-A already printed; the scanner reads them fine. The trade is mixed-format inventory data (different copies of the same title may have different formats), which we handle by storing the format alongside the barcode and rendering re-prints in whatever format the copy was added with.
+
+**Why no per-copy Dewey:** The librarian's mental model is one Dewey per title, regardless of how many physical copies exist. If a copy is shelved differently (reference vs circulating), that is a `location` or `status` concern, not classification. We keep Dewey on `books` and treat per-copy section as a backlog item.
+
+**Derived counts, not denormalized counters:** `quantity_available` becomes `COUNT(*) FROM copies WHERE book_id = ? AND status = 'available' AND id NOT IN (active loans)`. We take the join hit on the per-book display rather than maintain a counter that can drift from the truth. Catalog list views may need an index review post-deploy; the foundation issue will benchmark.
+
+**Updates the CLAUDE.md "Schema changes don't migrate" gotcha (again):** non-additive changes now have a one-off-function pattern in addition to the additive-ALTER pattern. The gotcha entry gets a second paragraph after this lands.
+
+**Related:**
+- DEC-036 -- additive-only pattern this refactor intentionally goes beyond.
+- DEC-032, DEC-035 -- enrichment chains gaining the Dewey field in issue 5 of the slicing.
+- `docs/specs/2026-05-23-inventory-copies-design.md` -- full spec including UI, label layout, test plan, and issue slicing.
+- bd issue `cs408-go-stack-yu3` -- paused rapid-scan portal; rebuilt and closed by issue 6.
+- bd memory `inventory-copies-barcodes-design` -- prior single-format sketch from 2026-05-22; superseded.
