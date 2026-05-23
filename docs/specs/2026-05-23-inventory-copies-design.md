@@ -196,27 +196,82 @@ Luhn check digit, total 11 characters. Examples: `LSF00000017`,
 
 ## Label content + layout
 
-Each label has three lines (top to bottom):
+Conceptual model: a label is a **combined spine label**. It goes on
+the book's spine (or, for thin paperbacks, on the lower front cover
+near the spine) and serves both shelving and circulation. The layout
+visually prioritizes shelving information at the top so a librarian
+scanning a shelf can find the book quickly; the barcode sits at the
+bottom for the scanner.
 
-1. Barcode SVG (server-rendered via `boombuler/barcode`), sized to fit
-   the label cell width.
+Single label content, top to bottom:
+
+1. Dewey number, displayed verbatim from `books.dewey`, large and
+   bold. Empty if not set (rendered as blank space, keeps label
+   geometry consistent).
 2. Author prefix: first 3 characters of the first author's last name,
-   uppercased. "Jane Austen" -> `AUS`; "F. Scott Fitzgerald" -> `FIT`;
-   "Ursula K. Le Guin" -> `LEG` (we treat "Le Guin" as one token by
-   taking the last whitespace-separated token, so "Le Guin" -> "Guin"
-   -> "GUI"; this is imperfect for compound surnames and is fine).
-   No author -> empty.
-3. Dewey number, displayed verbatim from `books.dewey`. Empty if not
-   set.
+   uppercased, slightly smaller than Dewey. "Jane Austen" -> `AUS`;
+   "F. Scott Fitzgerald" -> `FIT`; "Ursula K. Le Guin" -> `LEG` (we
+   treat "Le Guin" as one token by taking the last whitespace-
+   separated token, so "Le Guin" -> "Guin" -> "GUI"; this is
+   imperfect for compound surnames and is fine).
+   No author -> empty line.
+3. Barcode SVG (server-rendered via `boombuler/barcode`) in the
+   copy's stored `barcode_format` (Code 128 / Code 39 / EAN-13 /
+   UPC-A). Sized to fit the label cell width with a small margin.
+4. Human-readable copy identifier under the barcode (the barcode
+   string, e.g. `LSF00000178`), small monospace, so a librarian can
+   read it without a scanner.
 
-Default sheet: Avery 5160 (30 labels per sheet, 1" x 2 5/8"). The
-print page accepts a layout query parameter for future sheet support
-(`5163`, `5167`, etc.) but only `5160` ships in CP8.
+### Sheet presets (4 ship in CP8)
 
-Print CSS: `@media print` block in `static/stylesheets/style.css` (or
-a new `print.css` linked only on the print page). Hides sidebar and
-non-printable UI; positions labels in a CSS Grid matching the Avery
-template; sets `page-break-inside: avoid` on each label cell.
+| Preset | Paper | Layout | Label size | Use case |
+|---|---|---|---|---|
+| `avery-5160` (default) | US letter | 30 / sheet, 3 cols x 10 rows | 1" x 2 5/8" | Spines of hardbacks and trade paperbacks |
+| `avery-5161` | US letter | 20 / sheet, 2 cols x 10 rows | 1" x 4" | Thicker books and AV media; more room for long Dewey numbers |
+| `avery-l7160` | A4 | 21 / sheet, 3 cols x 7 rows | 1" x 2.625" | International parity with 5160 |
+| `roll-1x2.5` | Continuous roll | 1 / page | 1" x 2.5" | Brother QL / Dymo / Zebra thermal label printers |
+
+The smallest spine-only sizes (e.g. Avery 5167 at 0.5" x 1.75") are
+intentionally NOT in the CP8 set: 0.5" of height is too cramped to
+include a reliable barcode. If a library wants traditional text-only
+spine labels in addition to combined labels, that is a backlog item
+(separate "spine-only label mode").
+
+### Per-deployment default + calibration
+
+A small `label_settings` table holds one row keyed on `id=1`:
+
+```sql
+CREATE TABLE label_settings (
+    id              INTEGER PRIMARY KEY CHECK (id = 1),
+    preset          TEXT NOT NULL DEFAULT 'avery-5160',
+    offset_top_mm   REAL NOT NULL DEFAULT 0.0,
+    offset_left_mm  REAL NOT NULL DEFAULT 0.0
+);
+```
+
+- `preset` is one of the four preset slugs above (validated app-side).
+- `offset_top_mm` and `offset_left_mm` apply printer drift correction
+  before the first label cell. Adjustable in the admin UI in
+  millimeters, typical range -3 to +3 mm.
+- A "Print test page" button on `/admin/inventory/label-settings`
+  generates a calibration sheet with crosshair marks at known
+  positions so the librarian can measure drift and dial in the
+  offsets.
+
+### Print CSS
+
+A new `static/stylesheets/print.css` is linked only on the print
+page. It contains:
+- `@media print` block hiding sidebar, navbar, and all non-print UI.
+- Per-preset CSS Grid layouts matching the physical label positions.
+- `@page` rules for paper size (letter / A4) and zero browser
+  margins (the preset defines its own).
+- For the roll preset, `@page` size matches the label dimensions
+  exactly, and the page contains a single label cell.
+- `page-break-inside: avoid` on every label cell.
+- Custom properties for the calibration offsets, injected inline by
+  the handler so they apply at render time.
 
 ## UI surfaces
 
@@ -267,13 +322,32 @@ and N copies are created in one transaction.
   copies (the "needs relabel" report from the migration backlog),
   specific book (search by title or ISBN), specific barcode (for
   the per-copy re-print link from Manage Copies).
-- Sheet layout selector (defaults to 5160; only 5160 ships in CP8).
+- Sheet preset selector defaults to the value in `label_settings`.
+  Librarian can override per print run without changing the default.
+  Sheet presets in CP8: `avery-5160`, `avery-5161`, `avery-l7160`,
+  `roll-1x2.5`. The selector renders an inline preview of the
+  preset's dimensions and label count.
 - "Generate" button renders an HTML page with all selected labels
-  laid out for printing. User triggers browser Print (Ctrl+P) to
-  send to a label printer.
-- When the librarian prints a label for a copy with `needs_relabel=1`,
+  laid out for printing using the chosen preset. User triggers
+  browser Print (Ctrl+P) to send to a printer. For roll presets,
+  the print job emits one label per page; for sheet presets, labels
+  pack into a grid.
+- When the librarian prints labels for copies with `needs_relabel=1`,
   the page POSTs back to clear the flag once printing is confirmed
   (a "Mark as relabeled" button below the print preview).
+
+### Label settings + calibration page (`/admin/inventory/label-settings`)
+
+Admin-only. Two surfaces:
+
+- Default preset dropdown (one of the four CP8 presets). Save updates
+  the `label_settings` row.
+- Calibration controls: top offset (mm) and left offset (mm) number
+  inputs, with a "Print test page" button that renders a
+  calibration sheet for the currently-selected preset. The sheet
+  has crosshair marks at each label cell's corners so the librarian
+  can measure drift against the physical stock and adjust the
+  offsets accordingly.
 
 ### Sidebar
 
@@ -391,7 +465,12 @@ across June 2026.
   decides. The simpler `MAX` query is fine unless we hit a
   concurrent-add race; with library volumes that race is
   theoretical.
-- Print sheet sizes beyond 5160 (5163, 5167, etc.). Backlog.
+- Print sheet sizes beyond the four CP8 presets (Avery 5163, 5366,
+  Dymo 30252, etc.). Backlog; add presets per librarian request.
+- Text-only spine labels (small stock like Avery 5167) as a separate
+  print mode alongside combined labels. Backlog.
+- Admin-defined custom label templates (enter dimensions in admin
+  UI rather than pick from a fixed preset set). Backlog.
 - Auto-classification of barcode format on scan (read raw scanner
   emit, detect length + checksum, propose format). Backlog.
 - Per-copy location / shelf section. Backlog.
