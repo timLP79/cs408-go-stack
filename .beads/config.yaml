@@ -52,3 +52,5 @@ issue-prefix: "cs408-go-stack"
 # - linear.api-key
 # - github.org
 # - github.repo
+
+sync.remote: "git@github.com:timLP79/LibreShelf-bd.git"
