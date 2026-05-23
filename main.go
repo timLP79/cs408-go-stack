@@ -37,19 +37,19 @@ func main() {
 		log.Printf("LIBRESHELF_OFFLINE=true is locking offline mode; runtime DB setting will be ignored until the env var is unset.")
 	}
 
-	// LIBRESHELF_SKIP_SEED skips the book + cover seed steps so the
-	// server starts with login working but otherwise empty -- useful
-	// for testing the backup import flow against a clean state and
-	// for staging deployments that should not carry test data.
-	if os.Getenv("LIBRESHELF_SKIP_SEED") == "" {
+	// LIBRESHELF_SEED_DEV_BOOKS opt-in seeds the dev fixture catalog
+	// (~10 well-known titles + one library-format copy per quantity
+	// slot) and runs the Open Library cover backfill on those seeds.
+	// Production installs leave this unset and start with an empty
+	// catalog; the admin adds books through the CRUD UI. Tests call
+	// SeedBooks directly via setupTestRouter, independent of this gate.
+	if os.Getenv("LIBRESHELF_SEED_DEV_BOOKS") != "" {
 		dm.SeedBooks()
 
 		// Opportunistically backfill covers from Open Library for any book
-		// that has an ISBN but no cover file yet. Safe to call every
-		// startup: the inner SELECT is a no-op after all seed books have
-		// their covers. 60s total budget so a slow OL (or network block)
-		// cannot wedge the server at boot -- the inner HTTP client also
-		// has its own 10s per-request timeout.
+		// that has an ISBN but no cover file yet. 60s total budget so a
+		// slow OL (or network block) cannot wedge the server at boot --
+		// the inner HTTP client also has its own 10s per-request timeout.
 		seedCoverCtx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 		dm.FetchAndStoreSeedCovers(seedCoverCtx)
 		cancel()

@@ -207,7 +207,7 @@ func HandleBookCreate(c *gin.Context) {
 	description := strings.TrimSpace(c.PostForm("description"))
 	genre := normalizeFreeText(c.PostForm("genre"))
 	yearStr := strings.TrimSpace(c.PostForm("year"))
-	quantityStr := strings.TrimSpace(c.PostForm("quantity"))
+	dewey := strings.TrimSpace(c.PostForm("dewey"))
 
 	book := &Book{Title: title}
 	if isbnRaw != "" {
@@ -228,9 +228,8 @@ func HandleBookCreate(c *gin.Context) {
 			book.Year = &year
 		}
 	}
-	if q, err := strconv.Atoi(quantityStr); err == nil {
-		book.QuantityTotal = q
-		book.QuantityAvailable = q
+	if dewey != "" {
+		book.Dewey = &dewey
 	}
 
 	if title == "" || len(title) > 255 {
@@ -247,11 +246,6 @@ func HandleBookCreate(c *gin.Context) {
 	}
 	if len(authors) == 0 {
 		renderBookCreateForm(c, book, authorsText, "At least one author is required.")
-		return
-	}
-
-	if book.QuantityTotal < 1 {
-		renderBookCreateForm(c, book, authorsText, "Quantity must be a positive integer.")
 		return
 	}
 
@@ -437,7 +431,7 @@ func HandleBookUpdate(c *gin.Context) {
 	description := strings.TrimSpace(c.PostForm("description"))
 	genre := normalizeFreeText(c.PostForm("genre"))
 	yearStr := strings.TrimSpace(c.PostForm("year"))
-	quantityStr := strings.TrimSpace(c.PostForm("quantity"))
+	dewey := strings.TrimSpace(c.PostForm("dewey"))
 
 	book := &Book{ID: id, Title: title, CoverFilename: existing.CoverFilename}
 	if isbnRaw != "" {
@@ -458,9 +452,8 @@ func HandleBookUpdate(c *gin.Context) {
 			book.Year = &year
 		}
 	}
-	if q, err := strconv.Atoi(quantityStr); err == nil {
-		book.QuantityTotal = q
-		book.QuantityAvailable = q
+	if dewey != "" {
+		book.Dewey = &dewey
 	}
 
 	if title == "" || len(title) > 255 {
@@ -477,11 +470,6 @@ func HandleBookUpdate(c *gin.Context) {
 	}
 	if len(authors) == 0 {
 		renderBookEditForm(c, id, book, authorsText, "At least one author is required.")
-		return
-	}
-
-	if book.QuantityTotal < 1 {
-		renderBookEditForm(c, id, book, authorsText, "Quantity must be a positive integer.")
 		return
 	}
 

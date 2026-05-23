@@ -12,14 +12,20 @@ import (
 	"time"
 )
 
-// mustCreateBook seeds a book with the given total/available quantity and
-// a single "Test Author" credit. Returns the book id.
-func mustCreateBook(t *testing.T, dm *DatabaseManager, title string, quantity int) int {
+// mustCreateBook seeds a book and N library-format copies, then returns
+// the book id. Pass copies=0 to create a catalog entry with no
+// inventory (e.g. for tests that exercise empty-inventory paths).
+func mustCreateBook(t *testing.T, dm *DatabaseManager, title string, copies int) int {
 	t.Helper()
-	book := &Book{Title: title, QuantityTotal: quantity, QuantityAvailable: quantity}
+	book := &Book{Title: title}
 	id, err := dm.CreateBook(book, []string{"Test Author"})
 	if err != nil {
 		t.Fatalf("CreateBook(%q): %v", title, err)
+	}
+	for i := 0; i < copies; i++ {
+		if _, _, err := dm.AddLibraryCopy(id); err != nil {
+			t.Fatalf("AddLibraryCopy(book %d, copy %d/%d): %v", id, i+1, copies, err)
+		}
 	}
 	return id
 }
@@ -35,24 +41,62 @@ func mustCreatePatron(t *testing.T, dm *DatabaseManager, name string) int {
 	return id
 }
 
-// mustInsertLoan bypasses CheckoutBook to seed loans directly. Needed for
-// tests that exercise guard conditions (overdue, at-limit) and filters
-// (GetActiveLoans, GetOverdueLoans). Pass empty string for returnedAt to
-// leave the loan active.
+// firstAvailableCopyOf returns the lowest-id available copy of the
+// given book (status='available' and not currently on loan). Fails the
+// test if no eligible copy exists.
+func firstAvailableCopyOf(t *testing.T, dm *DatabaseManager, bookID int) int {
+	t.Helper()
+	var copyID int
+	err := dm.db.QueryRow(`
+		SELECT c.id FROM copies c
+		WHERE c.book_id = ? AND c.status = 'available'
+		  AND c.id NOT IN (SELECT copy_id FROM loans WHERE returned_at IS NULL)
+		ORDER BY c.id LIMIT 1`, bookID).Scan(&copyID)
+	if err != nil {
+		t.Fatalf("firstAvailableCopyOf(book %d): %v", bookID, err)
+	}
+	return copyID
+}
+
+// firstCopyOf returns the lowest-id copy of the given book without
+// regard to status or loan state. Use for tests that want a copy id
+// for a historical (returned) loan.
+func firstCopyOf(t *testing.T, dm *DatabaseManager, bookID int) int {
+	t.Helper()
+	var copyID int
+	err := dm.db.QueryRow(`SELECT id FROM copies WHERE book_id = ? ORDER BY id LIMIT 1`, bookID).Scan(&copyID)
+	if err != nil {
+		t.Fatalf("firstCopyOf(book %d): %v", bookID, err)
+	}
+	return copyID
+}
+
+// mustInsertLoan bypasses CheckoutBook to seed loans directly. Needed
+// for tests that exercise guard conditions (overdue, at-limit) and
+// filters (GetActiveLoans, GetOverdueLoans). bookID is resolved to a
+// copy_id internally: for an active loan (returnedAt == ""), the
+// lowest-id copy with no current active loan is picked; for a returned
+// loan, copy id is the lowest-id copy of the book.
 func mustInsertLoan(t *testing.T, dm *DatabaseManager, bookID, patronID int, dueDate, returnedAt string) int {
 	t.Helper()
+	var copyID int
+	if returnedAt == "" {
+		copyID = firstAvailableCopyOf(t, dm, bookID)
+	} else {
+		copyID = firstCopyOf(t, dm, bookID)
+	}
 	var (
 		res sql.Result
 		err error
 	)
 	if returnedAt == "" {
 		res, err = dm.db.Exec(
-			`INSERT INTO loans (book_id, patron_id, due_date) VALUES (?, ?, ?)`,
-			bookID, patronID, dueDate)
+			`INSERT INTO loans (copy_id, patron_id, due_date) VALUES (?, ?, ?)`,
+			copyID, patronID, dueDate)
 	} else {
 		res, err = dm.db.Exec(
-			`INSERT INTO loans (book_id, patron_id, due_date, returned_at) VALUES (?, ?, ?, ?)`,
-			bookID, patronID, dueDate, returnedAt)
+			`INSERT INTO loans (copy_id, patron_id, due_date, returned_at) VALUES (?, ?, ?, ?)`,
+			copyID, patronID, dueDate, returnedAt)
 	}
 	if err != nil {
 		t.Fatalf("insert loan: %v", err)
@@ -62,6 +106,60 @@ func mustInsertLoan(t *testing.T, dm *DatabaseManager, bookID, patronID int, due
 		t.Fatalf("LastInsertId: %v", err)
 	}
 	return int(id)
+}
+
+// mustCreateBookWithAvailable seeds a book with `total` library-format
+// copies, then marks (total - available) of them as 'lost' so the
+// derived available_copies count equals `available`. This mirrors the
+// pre-copies-refactor `Book{QuantityTotal: total, QuantityAvailable:
+// available}` shape without needing the test to set up loan rows.
+//
+// Use this when the test cares about the availability count surface
+// (out-of-stock filters, dashboard counters) but not about which
+// specific patron holds which copy. For tests that need real loans,
+// use mustInsertLoan instead.
+func mustCreateBookWithAvailable(t *testing.T, dm *DatabaseManager, title string, total, available int) int {
+	t.Helper()
+	if available < 0 || available > total {
+		t.Fatalf("mustCreateBookWithAvailable(%q): invalid total/available %d/%d", title, total, available)
+	}
+	id := mustCreateBook(t, dm, title, total)
+	if available == total {
+		return id
+	}
+	rows, err := dm.db.Query(`SELECT id FROM copies WHERE book_id = ? ORDER BY id LIMIT ?`,
+		id, total-available)
+	if err != nil {
+		t.Fatalf("query copies for %q: %v", title, err)
+	}
+	var copyIDs []int
+	for rows.Next() {
+		var cid int
+		if err := rows.Scan(&cid); err != nil {
+			rows.Close()
+			t.Fatalf("scan copy id: %v", err)
+		}
+		copyIDs = append(copyIDs, cid)
+	}
+	rows.Close()
+	for _, cid := range copyIDs {
+		if _, err := dm.db.Exec(`UPDATE copies SET status = 'lost' WHERE id = ?`, cid); err != nil {
+			t.Fatalf("mark copy %d lost: %v", cid, err)
+		}
+	}
+	return id
+}
+
+// mustCheckout calls CheckoutBook against the first available copy of
+// the given book. Used by tests that want the happy path without
+// caring about which specific copy is borrowed. Fails the test if
+// CheckoutBook returns an error.
+func mustCheckout(t *testing.T, dm *DatabaseManager, bookID, patronID int, dueDate time.Time) {
+	t.Helper()
+	copyID := firstAvailableCopyOf(t, dm, bookID)
+	if err := dm.CheckoutBook(copyID, patronID, dueDate); err != nil {
+		t.Fatalf("CheckoutBook(copy %d): %v", copyID, err)
+	}
 }
 
 // TestCheckoutBookHappyPath pins the baseline success path: a loan row is
