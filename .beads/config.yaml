@@ -54,3 +54,5 @@ issue-prefix: "cs408-go-stack"
 # - github.repo
 
 sync.remote: "git@github.com:timLP79/LibreShelf-bd.git"
+
+export.git-add: false
