@@ -1213,11 +1213,18 @@ func (dm *DatabaseManager) DeleteBook(id int) error {
 	defer tx.Rollback()
 
 	var loanCount int
-	if err := tx.QueryRow("SELECT COUNT(*) FROM loans WHERE book_id = ?", id).Scan(&loanCount); err != nil {
+	if err := tx.QueryRow(`
+		SELECT COUNT(*) FROM loans l
+		JOIN copies c ON l.copy_id = c.id
+		WHERE c.book_id = ?`, id).Scan(&loanCount); err != nil {
 		return err
 	}
 	if loanCount > 0 {
 		return ErrBookHasLoans
+	}
+
+	if _, err := tx.Exec("DELETE FROM copies WHERE book_id = ?", id); err != nil {
+		return err
 	}
 
 	if _, err := tx.Exec("DELETE FROM books WHERE id = ?", id); err != nil {

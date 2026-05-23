@@ -630,22 +630,9 @@ func TestBookUpdate_RejectsNoAuthors(t *testing.T) {
 	}
 }
 
-func TestBookUpdate_RejectsZeroQuantity(t *testing.T) {
-	router, dm := setupTestRouter(t)
-	sess, csrf := loginAs(t, dm, "admin", "admin")
-	id, _ := dm.CreateBook(&Book{Title: "Original"}, []string{"Author"})
-	rr := postBookMultipart(t, router, fmt.Sprintf("/books/%d/edit", id), sess, csrf, map[string]string{
-		"title":    "Title",
-		"authors":  "Author",
-		"quantity": "0",
-	}, "", nil)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400. body: %s", rr.Code, rr.Body.String())
-	}
-	if !strings.Contains(rr.Body.String(), "Quantity must be a positive integer") {
-		t.Errorf("body should contain quantity error")
-	}
-}
+// TestBookUpdate_RejectsZeroQuantity / TestBookCreate_RejectsZeroQuantity
+// removed: post-DEC-037 the book form no longer carries a quantity field
+// (inventory is per-copy). The validation those tests pinned is gone.
 
 func TestBookUpdate_RejectsYearOutOfRange(t *testing.T) {
 	router, dm := setupTestRouter(t)
@@ -714,22 +701,6 @@ func TestBookCreate_RejectsNoAuthors(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "author is required") {
 		t.Errorf("body should contain authors error")
-	}
-}
-
-func TestBookCreate_RejectsZeroQuantity(t *testing.T) {
-	router, dm := setupTestRouter(t)
-	sess, csrf := loginAs(t, dm, "admin", "admin")
-	rr := postBookMultipart(t, router, "/books", sess, csrf, map[string]string{
-		"title":    "Title",
-		"authors":  "Author",
-		"quantity": "0",
-	}, "", nil)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400. body: %s", rr.Code, rr.Body.String())
-	}
-	if !strings.Contains(rr.Body.String(), "Quantity must be a positive integer") {
-		t.Errorf("body should contain quantity error")
 	}
 }
 
