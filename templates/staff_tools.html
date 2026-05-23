@@ -1,0 +1,27 @@
+{{define "content"}}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1 class="mb-1">Staff Tools</h1>
+        <p class="text-muted mb-0">Patron records, checkout/checkin, and other staff workflows.</p>
+    </div>
+</div>
+
+<section class="mb-4">
+    <h2 class="h5 mb-3">Tools</h2>
+    <div class="row g-3">
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100">
+                <div class="card-body d-flex flex-column">
+                    <h3 class="card-title h6">Patrons</h3>
+                    <p class="card-text text-muted small flex-grow-1">
+                        Add, edit, and look up patron records.
+                    </p>
+                    <a href="/patrons" class="btn btn-sm align-self-start" style="background-color: #1e3a5f; color: #ffffff;">
+                        Open
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{{end}}

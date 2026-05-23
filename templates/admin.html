@@ -1,7 +1,7 @@
 {{define "content"}}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-        <h1 class="mb-1">Admin</h1>
+        <h1 class="mb-1">Admin Tools</h1>
         <p class="text-muted mb-0">Library administration and system settings</p>
     </div>
 </div>
@@ -41,6 +41,24 @@
                     <a href="/admin/settings" class="btn btn-sm align-self-start" style="background-color: #1e3a5f; color: #ffffff;">
                         Open
                     </a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100">
+                <div class="card-body d-flex flex-column">
+                    <h3 class="card-title h6">User Management</h3>
+                    <p class="card-text text-muted small flex-grow-1">
+                        Manage patron records and staff accounts.
+                    </p>
+                    <div class="d-flex gap-2">
+                        <a href="/patrons" class="btn btn-sm" style="background-color: #1e3a5f; color: #ffffff;">
+                            Patrons
+                        </a>
+                        <a href="/staff" class="btn btn-sm" style="background-color: #1e3a5f; color: #ffffff;">
+                            Staff
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>

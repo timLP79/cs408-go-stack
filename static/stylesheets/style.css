@@ -46,6 +46,17 @@
   color: #ffffff;
 }
 
+.sidebar-section-label {
+  color: #a8c4e0;
+  opacity: 0.6;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  margin-bottom: 0.15rem;
+}
+
 .card {
   background-color: #ffffff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);

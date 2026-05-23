@@ -126,7 +126,13 @@ func HandleIndex(c *gin.Context) {
 
 func HandleAdmin(c *gin.Context) {
 	renderTemplate(c, "admin", gin.H{
-		"Title": "Admin",
+		"Title": "Admin Tools",
+	})
+}
+
+func HandleStaffTools(c *gin.Context) {
+	renderTemplate(c, "staff_tools", gin.H{
+		"Title": "Staff Tools",
 	})
 }
 
