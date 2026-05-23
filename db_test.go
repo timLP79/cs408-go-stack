@@ -230,10 +230,8 @@ func TestUpdateBookCover(t *testing.T) {
 
 	isbn := "9780000000001"
 	id, err := dm.CreateBook(&Book{
-		Title:             "Test Book",
-		ISBN:              &isbn,
-		QuantityTotal:     1,
-		QuantityAvailable: 1,
+		Title: "Test Book",
+		ISBN:  &isbn,
 	}, []string{"Author"})
 	if err != nil {
 		t.Fatalf("CreateBook: %v", err)
@@ -268,10 +266,8 @@ func TestUpdateBookHappy(t *testing.T) {
 	dm := setupTestDB(t)
 	isbn := "9780000111111"
 	id, err := dm.CreateBook(&Book{
-		Title:             "Original",
-		ISBN:              &isbn,
-		QuantityTotal:     1,
-		QuantityAvailable: 1,
+		Title: "Original",
+		ISBN:  &isbn,
 	}, []string{"First Author"})
 	if err != nil {
 		t.Fatalf("CreateBook: %v", err)
@@ -281,11 +277,9 @@ func TestUpdateBookHappy(t *testing.T) {
 	newISBN := "9780000222222"
 	year := 2026
 	if err := dm.UpdateBook(id, &Book{
-		Title:             newTitle,
-		ISBN:              &newISBN,
-		Year:              &year,
-		QuantityTotal:     5,
-		QuantityAvailable: 4,
+		Title: newTitle,
+		ISBN:  &newISBN,
+		Year:  &year,
 	}, []string{"Author A", "Author B"}); err != nil {
 		t.Fatalf("UpdateBook: %v", err)
 	}
@@ -300,9 +294,6 @@ func TestUpdateBookHappy(t *testing.T) {
 	if got.ISBN == nil || *got.ISBN != newISBN {
 		t.Errorf("ISBN = %v, want %s", got.ISBN, newISBN)
 	}
-	if got.QuantityTotal != 5 {
-		t.Errorf("QuantityTotal = %d, want 5", got.QuantityTotal)
-	}
 	if !strings.Contains(got.Authors, "Author A") || !strings.Contains(got.Authors, "Author B") {
 		t.Errorf("Authors = %q, want both Author A and Author B", got.Authors)
 	}
@@ -312,10 +303,19 @@ func TestGetLoanHistoryStatuses(t *testing.T) {
 	dm := setupTestDB(t)
 	isbn := "9780000333333"
 	bookID, err := dm.CreateBook(&Book{
-		Title: "T", ISBN: &isbn, QuantityTotal: 5, QuantityAvailable: 5,
+		Title: "T", ISBN: &isbn,
 	}, []string{"A"})
 	if err != nil {
 		t.Fatalf("CreateBook: %v", err)
+	}
+	for i := 0; i < 5; i++ {
+		if _, _, err := dm.AddLibraryCopy(bookID); err != nil {
+			t.Fatalf("AddLibraryCopy %d: %v", i, err)
+		}
+	}
+	copies, err := dm.GetCopiesByBookID(bookID)
+	if err != nil || len(copies) < 3 {
+		t.Fatalf("expected at least 3 copies, got %d (err %v)", len(copies), err)
 	}
 	patronID := mustCreateUser(t, dm, "p_history", "patron")
 	if _, err := dm.db.Exec(`INSERT INTO patrons (id, name) VALUES (?, ?)`, patronID, "Test Patron"); err != nil {
@@ -324,22 +324,22 @@ func TestGetLoanHistoryStatuses(t *testing.T) {
 
 	// Active loan: due in the future, not returned.
 	if _, err := dm.db.Exec(
-		`INSERT INTO loans (book_id, patron_id, due_date) VALUES (?, ?, DATE('now', '+14 days'))`,
-		bookID, patronID,
+		`INSERT INTO loans (copy_id, patron_id, due_date) VALUES (?, ?, DATE('now', '+14 days'))`,
+		copies[0].ID, patronID,
 	); err != nil {
 		t.Fatalf("active loan: %v", err)
 	}
 	// Overdue loan: due in the past, not returned.
 	if _, err := dm.db.Exec(
-		`INSERT INTO loans (book_id, patron_id, due_date) VALUES (?, ?, DATE('now', '-3 days'))`,
-		bookID, patronID,
+		`INSERT INTO loans (copy_id, patron_id, due_date) VALUES (?, ?, DATE('now', '-3 days'))`,
+		copies[1].ID, patronID,
 	); err != nil {
 		t.Fatalf("overdue loan: %v", err)
 	}
-	// Returned loan: returned_at set.
+	// Returned loan: returned_at set. Reuse copy[0]; historical row.
 	if _, err := dm.db.Exec(
-		`INSERT INTO loans (book_id, patron_id, due_date, returned_at) VALUES (?, ?, DATE('now', '-30 days'), DATETIME('now', '-25 days'))`,
-		bookID, patronID,
+		`INSERT INTO loans (copy_id, patron_id, due_date, returned_at) VALUES (?, ?, DATE('now', '-30 days'), DATETIME('now', '-25 days'))`,
+		copies[2].ID, patronID,
 	); err != nil {
 		t.Fatalf("returned loan: %v", err)
 	}

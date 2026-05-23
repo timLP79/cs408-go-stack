@@ -434,7 +434,7 @@ func TestPatronDeleteRejectsWhenHasLoans(t *testing.T) {
 	}
 	// Seed a book to reference from loans (foreign key).
 	bookID, err := dm.CreateBook(
-		&Book{Title: "Loaned Book", QuantityTotal: 1, QuantityAvailable: 1},
+		&Book{Title: "Loaned Book"},
 		[]string{"Seed Author"},
 	)
 	if err != nil {

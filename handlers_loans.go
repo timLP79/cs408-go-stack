@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -52,8 +53,31 @@ func HandleCheckout(c *gin.Context) {
 		return
 	}
 
+	barcode := strings.TrimSpace(c.PostForm("barcode"))
+	if barcode == "" {
+		setFlash(c, flashKindError, "loan_barcode_required")
+		c.Redirect(http.StatusFound, bookPath)
+		return
+	}
+	copy, err := dm.GetCopyByBarcode(barcode)
+	if err == ErrCopyNotFound {
+		setFlash(c, flashKindError, "loan_barcode_unknown")
+		c.Redirect(http.StatusFound, bookPath)
+		return
+	}
+	if err != nil {
+		log.Printf("HandleCheckout: GetCopyByBarcode(%q): %v", barcode, err)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	if copy.BookID != bookID {
+		setFlash(c, flashKindError, "loan_barcode_book_mismatch")
+		c.Redirect(http.StatusFound, bookPath)
+		return
+	}
+
 	dueDate := time.Now().AddDate(0, 0, DefaultLoanTermDays)
-	err = dm.CheckoutBook(bookID, patronID, dueDate)
+	err = dm.CheckoutBook(copy.ID, patronID, dueDate)
 	switch err {
 	case nil:
 		setFlash(c, flashKindSuccess, "loan_checkout_success")
@@ -65,7 +89,7 @@ func HandleCheckout(c *gin.Context) {
 	case ErrNoCopiesAvailable:
 		setFlash(c, flashKindError, "loan_no_copies")
 	default:
-		log.Printf("HandleCheckout: CheckoutBook(book=%d, patron=%d): %v", bookID, patronID, err)
+		log.Printf("HandleCheckout: CheckoutBook(copy=%d, patron=%d): %v", copy.ID, patronID, err)
 		c.String(http.StatusInternalServerError, "Internal Server Error")
 		return
 	}

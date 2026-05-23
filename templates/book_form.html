@@ -67,13 +67,18 @@
                            value="{{if .Book}}{{deref .Book.Year}}{{end}}"
                            min="1500" max="2100">
                 </div>
-                <label for="book-quantity" class="col-sm-2 col-form-label">Quantity</label>
+                <label for="book-dewey" class="col-sm-2 col-form-label">Dewey</label>
                 <div class="col-sm-3">
-                    <input type="number" class="form-control" id="book-quantity" name="quantity"
-                           value="{{if .Book}}{{.Book.QuantityTotal}}{{else}}1{{end}}"
-                           min="1" required>
-                    <div class="invalid-feedback">Quantity must be at least 1.</div>
+                    <input type="text" class="form-control" id="book-dewey" name="dewey"
+                           value="{{if .Book}}{{deref .Book.Dewey}}{{end}}"
+                           maxlength="50">
                 </div>
+            </div>
+
+            <div class="form-text mb-3">
+                Inventory: copies are added per-physical-book through the
+                Manage Copies surface on the book detail page after the
+                book is created.
             </div>
 
             <div class="row mb-3">

@@ -599,7 +599,7 @@ func extractLoginCSRF(rr *httptest.ResponseRecorder) string {
 func TestBookUpdate_RejectsEmptyTitle(t *testing.T) {
 	router, dm := setupTestRouter(t)
 	sess, csrf := loginAs(t, dm, "admin", "admin")
-	id, _ := dm.CreateBook(&Book{Title: "Original", QuantityTotal: 1, QuantityAvailable: 1}, []string{"Author"})
+	id, _ := dm.CreateBook(&Book{Title: "Original"}, []string{"Author"})
 	rr := postBookMultipart(t, router, fmt.Sprintf("/books/%d/edit", id), sess, csrf, map[string]string{
 		"title":    "",
 		"authors":  "Author",
@@ -616,7 +616,7 @@ func TestBookUpdate_RejectsEmptyTitle(t *testing.T) {
 func TestBookUpdate_RejectsNoAuthors(t *testing.T) {
 	router, dm := setupTestRouter(t)
 	sess, csrf := loginAs(t, dm, "admin", "admin")
-	id, _ := dm.CreateBook(&Book{Title: "Original", QuantityTotal: 1, QuantityAvailable: 1}, []string{"Author"})
+	id, _ := dm.CreateBook(&Book{Title: "Original"}, []string{"Author"})
 	rr := postBookMultipart(t, router, fmt.Sprintf("/books/%d/edit", id), sess, csrf, map[string]string{
 		"title":    "Title",
 		"authors":  "",
@@ -633,7 +633,7 @@ func TestBookUpdate_RejectsNoAuthors(t *testing.T) {
 func TestBookUpdate_RejectsZeroQuantity(t *testing.T) {
 	router, dm := setupTestRouter(t)
 	sess, csrf := loginAs(t, dm, "admin", "admin")
-	id, _ := dm.CreateBook(&Book{Title: "Original", QuantityTotal: 1, QuantityAvailable: 1}, []string{"Author"})
+	id, _ := dm.CreateBook(&Book{Title: "Original"}, []string{"Author"})
 	rr := postBookMultipart(t, router, fmt.Sprintf("/books/%d/edit", id), sess, csrf, map[string]string{
 		"title":    "Title",
 		"authors":  "Author",
@@ -650,7 +650,7 @@ func TestBookUpdate_RejectsZeroQuantity(t *testing.T) {
 func TestBookUpdate_RejectsYearOutOfRange(t *testing.T) {
 	router, dm := setupTestRouter(t)
 	sess, csrf := loginAs(t, dm, "admin", "admin")
-	id, _ := dm.CreateBook(&Book{Title: "Original", QuantityTotal: 1, QuantityAvailable: 1}, []string{"Author"})
+	id, _ := dm.CreateBook(&Book{Title: "Original"}, []string{"Author"})
 	rr := postBookMultipart(t, router, fmt.Sprintf("/books/%d/edit", id), sess, csrf, map[string]string{
 		"title":    "Title",
 		"authors":  "Author",
@@ -668,7 +668,7 @@ func TestBookUpdate_RejectsYearOutOfRange(t *testing.T) {
 func TestBookUpdate_RejectsInvalidISBN(t *testing.T) {
 	router, dm := setupTestRouter(t)
 	sess, csrf := loginAs(t, dm, "admin", "admin")
-	id, _ := dm.CreateBook(&Book{Title: "Original", QuantityTotal: 1, QuantityAvailable: 1}, []string{"Author"})
+	id, _ := dm.CreateBook(&Book{Title: "Original"}, []string{"Author"})
 	rr := postBookMultipart(t, router, fmt.Sprintf("/books/%d/edit", id), sess, csrf, map[string]string{
 		"title":    "Title",
 		"authors":  "Author",
@@ -804,7 +804,7 @@ func TestStaffDelete_DeletesAdminWhenNotLast(t *testing.T) {
 func TestHandleIndex_PatronDashboardWithLoans(t *testing.T) {
 	router, dm := setupTestRouter(t)
 	sess, _, patronID := loginAsPatron(t, dm, "Index Patron")
-	bookID, _ := dm.CreateBook(&Book{Title: "B", QuantityTotal: 1, QuantityAvailable: 1}, []string{"A"})
+	bookID, _ := dm.CreateBook(&Book{Title: "B"}, []string{"A"})
 	if err := dm.CheckoutBook(bookID, patronID, time.Now().Add(7*24*time.Hour)); err != nil {
 		t.Fatalf("CheckoutBook: %v", err)
 	}
@@ -852,13 +852,13 @@ func TestDBMethods_ErrorReturnsOnClosedDB(t *testing.T) {
 	if err := dm.DeletePatron(1); err == nil {
 		t.Errorf("DeletePatron: expected error on closed db, got nil")
 	}
-	if err := dm.UpdateBook(1, &Book{Title: "x", QuantityTotal: 1, QuantityAvailable: 1}, []string{"a"}); err == nil {
+	if err := dm.UpdateBook(1, &Book{Title: "x"}, []string{"a"}); err == nil {
 		t.Errorf("UpdateBook: expected error on closed db, got nil")
 	}
 	if _, _, err := dm.CreatePatron("Test Person", "", "", "", "hash"); err == nil {
 		t.Errorf("CreatePatron: expected error on closed db, got nil")
 	}
-	if _, err := dm.CreateBook(&Book{Title: "x", QuantityTotal: 1, QuantityAvailable: 1}, []string{"a"}); err == nil {
+	if _, err := dm.CreateBook(&Book{Title: "x"}, []string{"a"}); err == nil {
 		t.Errorf("CreateBook: expected error on closed db, got nil")
 	}
 	if err := dm.UpdateUserPassword(1, "newhash"); err == nil {

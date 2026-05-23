@@ -35,7 +35,7 @@
                 <div class="mt-3">
                     <div class="d-flex justify-content-between align-items-center mb-1">
                         <span class="text-muted">Availability</span>
-                        {{if gt .Book.QuantityAvailable 0}}
+                        {{if gt .Book.AvailableCopies 0}}
                         <span class="badge badge-available">Available</span>
                         {{else}}
                         <span class="badge badge-checked-out">Checked Out</span>
@@ -43,7 +43,7 @@
                     </div>
                     <div class="d-flex justify-content-between align-items-center">
                         <span class="text-muted">On Shelf</span>
-                        <span>{{.Book.QuantityAvailable}} of {{.Book.QuantityTotal}}</span>
+                        <span>{{.Book.AvailableCopies}} of {{.Book.TotalCopies}}</span>
                     </div>
                 </div>
             </div>
@@ -96,7 +96,7 @@
         <div class="card mt-4 mb-4">
             <div class="card-body">
                 <h5 class="card-title">Check Out Book</h5>
-                {{if le .Book.QuantityAvailable 0}}
+                {{if le .Book.AvailableCopies 0}}
                 <p class="text-muted mb-0">No copies available to check out.</p>
                 {{else}}
                 <form method="POST" action="/books/{{.Book.ID}}/checkout" autocomplete="off">
