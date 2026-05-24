@@ -1323,3 +1323,108 @@ func TestHandleBookUpdate_CoverURLSkippedWhenOffline(t *testing.T) {
 		t.Errorf("expected nil cover_filename after offline skip, got %q", *got.CoverFilename)
 	}
 }
+
+// ---------- HandleAddCopy ----------
+
+// TestAddCopyHappyPath pins POST /books/:id/copies: the handler
+// allocates an LSF barcode via AddLibraryCopy, flashes copy_added with
+// the barcode as detail, redirects to /books/:id. The new copy is
+// queryable via GetCopyByBarcode.
+func TestAddCopyHappyPath(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "admin", "admin")
+	bookID := mustCreateBook(t, dm, "Empty Inventory", 0)
+
+	rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/copies", bookID), sess, csrf, nil)
+
+	if rr.Code != http.StatusFound {
+		t.Fatalf("expected 302, got %d. body: %s", rr.Code, rr.Body.String())
+	}
+	if loc := rr.Header().Get("Location"); loc != fmt.Sprintf("/books/%d", bookID) {
+		t.Errorf("expected redirect to /books/%d, got %q", bookID, loc)
+	}
+	if got := flashCode(rr, "flash_success"); got != "copy_added" {
+		t.Errorf("expected flash_success=copy_added, got %q", got)
+	}
+	barcode := flashCode(rr, "flash_detail")
+	if !strings.HasPrefix(barcode, "LSF") || len(barcode) != 11 {
+		t.Errorf("expected LSF barcode in flash_detail, got %q", barcode)
+	}
+
+	copies, err := dm.GetCopiesByBookID(bookID)
+	if err != nil {
+		t.Fatalf("GetCopiesByBookID: %v", err)
+	}
+	if len(copies) != 1 {
+		t.Fatalf("expected 1 copy after add, got %d", len(copies))
+	}
+	if copies[0].Barcode != barcode {
+		t.Errorf("flash barcode %q != stored barcode %q", barcode, copies[0].Barcode)
+	}
+	if copies[0].BarcodeFormat != "code128" {
+		t.Errorf("BarcodeFormat = %q, want code128", copies[0].BarcodeFormat)
+	}
+	if copies[0].Status != "available" {
+		t.Errorf("Status = %q, want available", copies[0].Status)
+	}
+}
+
+// TestAddCopyMonotonicLSF pins that consecutive AddCopy calls allocate
+// distinct LSF sequences. Without monotonic allocation the second call
+// would collide on the UNIQUE barcode constraint and the handler would
+// surface a 500.
+func TestAddCopyMonotonicLSF(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "admin", "admin")
+	bookID := mustCreateBook(t, dm, "Two Copies", 0)
+
+	for i := 0; i < 2; i++ {
+		rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/copies", bookID), sess, csrf, nil)
+		if rr.Code != http.StatusFound {
+			t.Fatalf("add %d: status = %d, want 302; body=%s", i+1, rr.Code, rr.Body.String())
+		}
+	}
+
+	copies, err := dm.GetCopiesByBookID(bookID)
+	if err != nil {
+		t.Fatalf("GetCopiesByBookID: %v", err)
+	}
+	if len(copies) != 2 {
+		t.Fatalf("expected 2 copies, got %d", len(copies))
+	}
+	if copies[0].Barcode == copies[1].Barcode {
+		t.Errorf("expected distinct barcodes, got %q and %q", copies[0].Barcode, copies[1].Barcode)
+	}
+}
+
+// TestAddCopyBookNotFound pins the 404 path: adding a copy to a
+// nonexistent book id renders the error page, not a 500 or a phantom
+// copy row.
+func TestAddCopyBookNotFound(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "admin", "admin")
+
+	rr := postStaffForm(t, router, "/books/99999/copies", sess, csrf, nil)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rr.Code)
+	}
+}
+
+// TestAddCopyNonStaffForbidden pins the auth gate: a patron-role user
+// cannot POST /books/:id/copies.
+func TestAddCopyNonStaffForbidden(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf, _ := loginAsPatron(t, dm, "Borrower")
+	bookID := mustCreateBook(t, dm, "Restricted", 0)
+
+	rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/copies", bookID), sess, csrf, nil)
+
+	if rr.Code != http.StatusForbidden && rr.Code != http.StatusFound {
+		t.Errorf("expected 403 (or 302 redirect to login), got %d", rr.Code)
+	}
+	copies, _ := dm.GetCopiesByBookID(bookID)
+	if len(copies) != 0 {
+		t.Errorf("patron should not have been able to add copies; got %d", len(copies))
+	}
+}

@@ -176,6 +176,7 @@ func main() {
 	staff.GET("/books/:id/edit", HandleBookEdit)
 	staff.POST("/books/:id/edit", HandleBookUpdate)
 	staff.POST("/books/:id/checkout", HandleCheckout)
+	staff.POST("/books/:id/copies", HandleAddCopy)
 	staff.POST("/loans/:id/return", HandleReturn)
 	staff.GET("/loans", HandleLoansList)
 	staff.GET("/reports/overdue", HandleReportsOverdue)

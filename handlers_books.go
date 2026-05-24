@@ -618,6 +618,50 @@ func HandleBookDelete(c *gin.Context) {
 	c.Redirect(http.StatusFound, "/catalog")
 }
 
+// HandleAddCopy creates one library-format copy for the given book. The
+// LSF barcode is allocated server-side; the response redirects back to
+// the book detail page with a flash naming the new barcode so the
+// staffer can print a label.
+func HandleAddCopy(c *gin.Context) {
+	dm := getDB(c)
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.Status(http.StatusNotFound)
+		renderTemplate(c, "error", gin.H{
+			"Title":   "Not Found",
+			"Status":  404,
+			"Message": "Page not found",
+		})
+		return
+	}
+
+	if _, err := dm.GetBookByID(id); err == sql.ErrNoRows {
+		c.Status(http.StatusNotFound)
+		renderTemplate(c, "error", gin.H{
+			"Title":   "Not Found",
+			"Status":  404,
+			"Message": "Book not found",
+		})
+		return
+	} else if err != nil {
+		log.Printf("HandleAddCopy: GetBookByID(%d): %v", id, err)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+
+	_, barcode, err := dm.AddLibraryCopy(id)
+	if err != nil {
+		log.Printf("HandleAddCopy: AddLibraryCopy(%d): %v", id, err)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+
+	setFlash(c, flashKindSuccess, "copy_added")
+	setFlashDetail(c, barcode)
+	c.Redirect(http.StatusFound, fmt.Sprintf("/books/%d", id))
+}
+
 // HandleKiosk renders the public kiosk catalog grid. Anonymous access:
 // no auth gate, no checkout / edit / delete controls. Reuses the same
 // data attributes the catalog grid uses so initCatalogFilter in app.js

@@ -2,7 +2,14 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <a href="/catalog" class="text-decoration-none" style="color: #1e3a5f;">&larr; Back to Catalog</a>
     {{if and .User (or (eq .User.Role "admin") (eq .User.Role "staff"))}}
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 align-items-center">
+        <form method="POST" action="/books/{{.Book.ID}}/copies" class="m-0">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <button type="submit" class="btn btn-outline-success btn-sm"
+                    title="Add one library-format copy (LSF barcode generated server-side)">
+                + Add Copy
+            </button>
+        </form>
         <a href="/books/{{.Book.ID}}/edit" class="btn btn-outline-primary btn-sm">Edit</a>
         {{if eq .User.Role "admin"}}
         <button type="button" class="btn btn-outline-danger btn-sm"
@@ -109,6 +116,16 @@
                             <option value="{{.ID}}">{{.Name}}</option>
                             {{end}}
                         </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="checkout-barcode" class="form-label">Copy barcode</label>
+                        <input id="checkout-barcode" name="barcode" type="text" class="form-control"
+                               autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                               placeholder="Scan or type the barcode on the book" required>
+                        <div class="form-text">
+                            The barcode identifies which physical copy is leaving the shelf. Mismatched or
+                            unavailable barcodes are rejected.
+                        </div>
                     </div>
                     <button type="submit" class="btn w-100" style="border-color: #1e3a5f; color: #1e3a5f;">
                         Check Out for 14 Days

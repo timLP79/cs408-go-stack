@@ -60,6 +60,7 @@ var flashMessages = map[string]string{
 	"loan_barcode_required":              "Please scan or type the copy barcode before checking out.",
 	"loan_barcode_unknown":               "No copy found with that barcode.",
 	"loan_barcode_book_mismatch":         "That barcode belongs to a different title.",
+	"copy_added":                         "Copy added. Barcode:",
 	"backup_imported":                    "Backup restored. The previous database and covers are preserved as .bak files for one-step rollback.",
 	"settings_saved":                     "Settings saved.",
 	"settings_save_failed":               "Could not save settings. Please try again.",
