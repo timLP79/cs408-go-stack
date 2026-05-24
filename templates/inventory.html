@@ -1,0 +1,95 @@
+{{define "content"}}
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h1 class="mb-1">Inventory</h1>
+        <p class="text-muted mb-0">
+            {{len .Copies}} {{if eq (len .Copies) 1}}copy{{else}}copies{{end}}
+            {{if .StatusFilter}}with status <strong>{{.StatusFilter}}</strong>{{end}}
+            {{if .NeedsRelabelOnly}}flagged for relabel{{end}}
+        </p>
+    </div>
+</div>
+
+<div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+    <span class="small text-muted">Status:</span>
+    {{template "inventory_status_chip" (dict "Label" "All"        "Value" ""          "Active" (eq .StatusFilter "")          "NeedsRelabel" .NeedsRelabelOnly)}}
+    {{template "inventory_status_chip" (dict "Label" "Available"  "Value" "available" "Active" (eq .StatusFilter "available") "NeedsRelabel" .NeedsRelabelOnly)}}
+    {{template "inventory_status_chip" (dict "Label" "Lost"       "Value" "lost"      "Active" (eq .StatusFilter "lost")      "NeedsRelabel" .NeedsRelabelOnly)}}
+    {{template "inventory_status_chip" (dict "Label" "Damaged"    "Value" "damaged"   "Active" (eq .StatusFilter "damaged")   "NeedsRelabel" .NeedsRelabelOnly)}}
+    {{template "inventory_status_chip" (dict "Label" "Withdrawn"  "Value" "withdrawn" "Active" (eq .StatusFilter "withdrawn") "NeedsRelabel" .NeedsRelabelOnly)}}
+    <span class="vr mx-2"></span>
+    <a href="/inventory?{{if .StatusFilter}}status={{.StatusFilter}}&{{end}}needs_relabel={{if .NeedsRelabelOnly}}0{{else}}1{{end}}"
+       class="btn btn-sm {{if .NeedsRelabelOnly}}btn-info{{else}}btn-outline-info{{end}}">
+        Needs Relabel
+    </a>
+</div>
+
+{{if .Error}}<div class="alert alert-danger alert-dismissible fade show" role="alert">
+    {{.Error}}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>{{end}}
+
+{{if .Success}}<div class="alert alert-success alert-dismissible fade show" role="alert">
+    {{.Success}}{{with .SuccessDetail}} <strong>{{.}}</strong>{{end}}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>{{end}}
+
+<div class="card">
+    <div class="card-body">
+        {{if .Copies}}
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Book</th>
+                        <th>Barcode</th>
+                        <th>Format</th>
+                        <th>Status</th>
+                        <th>Last Loan</th>
+                        <th></th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Copies}}
+                    <tr>
+                        <td>
+                            <a href="/books/{{.BookID}}/copies" class="text-decoration-none" style="color: #1e3a5f;">{{.BookTitle}}</a>
+                        </td>
+                        <td><code>{{.Barcode}}</code></td>
+                        <td><span class="text-muted small">{{.BarcodeFormat}}</span></td>
+                        <td>{{template "copy_status_badge" .}}</td>
+                        <td>
+                            {{if .LastLoanAt.Valid}}
+                                <span class="small">{{.LastLoanAt.String}}</span>
+                                {{if .OnLoan}}<span class="badge bg-warning text-dark ms-1">on loan</span>{{end}}
+                            {{else}}
+                                <span class="text-muted small">never loaned</span>
+                            {{end}}
+                        </td>
+                        <td>{{if .NeedsRelabel}}<span class="badge bg-info text-dark">needs relabel</span>{{end}}</td>
+                        <td class="text-end">{{template "copy_actions_dropdown" (dict "Copy" . "CSRFToken" $.CSRFToken)}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <p class="text-muted mb-0">
+            No copies match the current filter.
+            {{if or .StatusFilter .NeedsRelabelOnly}}
+                <a href="/inventory">Clear filters</a> to see all copies.
+            {{end}}
+        </p>
+        {{end}}
+    </div>
+</div>
+{{end}}
+
+{{define "inventory_status_chip"}}
+<a href="/inventory?{{if .Value}}status={{.Value}}{{end}}{{if .NeedsRelabel}}{{if .Value}}&{{end}}needs_relabel=1{{end}}"
+   class="btn btn-sm {{if .Active}}btn-primary{{else}}btn-outline-primary{{end}}"
+   {{if .Active}}style="background-color: #1e3a5f; border-color: #1e3a5f;"{{end}}>
+    {{.Label}}
+</a>
+{{end}}

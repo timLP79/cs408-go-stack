@@ -1,0 +1,48 @@
+{{define "copy_status_badge"}}
+{{if eq .Status "available"}}<span class="badge bg-success">Available</span>
+{{else if eq .Status "lost"}}<span class="badge bg-danger">Lost</span>
+{{else if eq .Status "damaged"}}<span class="badge bg-warning text-dark">Damaged</span>
+{{else if eq .Status "withdrawn"}}<span class="badge bg-secondary">Withdrawn</span>
+{{else}}<span class="badge bg-light text-dark">{{.Status}}</span>{{end}}
+{{end}}
+
+{{define "copy_actions_dropdown"}}
+<div class="dropdown">
+    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+            data-bs-toggle="dropdown" aria-expanded="false">
+        Actions
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end">
+        {{if ne .Copy.Status "available"}}
+        <li>{{template "copy_status_form" (dict "Copy" .Copy "CSRFToken" .CSRFToken "NextStatus" "available" "Label" "Mark Available")}}</li>
+        {{end}}
+        {{if ne .Copy.Status "lost"}}
+        <li>{{template "copy_status_form" (dict "Copy" .Copy "CSRFToken" .CSRFToken "NextStatus" "lost" "Label" "Mark Lost")}}</li>
+        {{end}}
+        {{if ne .Copy.Status "damaged"}}
+        <li>{{template "copy_status_form" (dict "Copy" .Copy "CSRFToken" .CSRFToken "NextStatus" "damaged" "Label" "Mark Damaged")}}</li>
+        {{end}}
+        {{if ne .Copy.Status "withdrawn"}}
+        <li>{{template "copy_status_form" (dict "Copy" .Copy "CSRFToken" .CSRFToken "NextStatus" "withdrawn" "Label" "Mark Withdrawn")}}</li>
+        {{end}}
+        <li><hr class="dropdown-divider"></li>
+        <li>
+            <form method="POST" action="/copies/{{.Copy.ID}}/delete" class="m-0">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <button type="submit" class="dropdown-item text-danger"
+                        {{if .Copy.OnLoan}}disabled title="Cannot delete a copy that is currently on loan"{{end}}>
+                    Delete
+                </button>
+            </form>
+        </li>
+    </ul>
+</div>
+{{end}}
+
+{{define "copy_status_form"}}
+<form method="POST" action="/copies/{{.Copy.ID}}/status" class="m-0">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <input type="hidden" name="status" value="{{.NextStatus}}">
+    <button type="submit" class="dropdown-item">{{.Label}}</button>
+</form>
+{{end}}

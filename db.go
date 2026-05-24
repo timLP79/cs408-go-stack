@@ -1243,7 +1243,194 @@ var (
 	ErrPatronAtLoanLimit   = errors.New("db: patron at max active loans")
 	ErrCopyNotFound        = errors.New("db: copy not found")
 	ErrCopyBookMismatch    = errors.New("db: barcode does not belong to this book")
+	ErrCopyHasLoans        = errors.New("db: copy has loan history, cannot delete")
+	ErrCopyStatusInvalid   = errors.New("db: copy status must be available, lost, damaged, or withdrawn")
 )
+
+// CopyDetail enriches Copy with display-only fields derived at query
+// time: the book's title (so the inventory page can show titles
+// without an N+1), the latest checked_out_at across all loans for the
+// copy ("LastLoanAt"; null if never loaned), and whether the copy is
+// currently on loan ("OnLoan"). Used by the Manage Copies and
+// Inventory pages.
+type CopyDetail struct {
+	Copy
+	BookTitle  string
+	LastLoanAt sql.NullString
+	OnLoan     bool
+}
+
+// IsValidCopyStatus reports whether s is one of the four constants
+// (available / lost / damaged / withdrawn). Handlers use this to
+// validate the form payload before calling UpdateCopyStatus.
+func IsValidCopyStatus(s string) bool {
+	switch s {
+	case CopyStatusAvailable, CopyStatusLost, CopyStatusDamaged, CopyStatusWithdrawn:
+		return true
+	}
+	return false
+}
+
+// GetCopyByID looks up a copy by primary key. Returns ErrCopyNotFound
+// when no row exists. Used by status / delete handlers to verify the
+// copy before mutating it.
+func (dm *DatabaseManager) GetCopyByID(copyID int) (*Copy, error) {
+	c := &Copy{}
+	err := dm.db.QueryRow(`
+		SELECT id, book_id, barcode, barcode_format, status, needs_relabel, acquired_at
+		FROM copies WHERE id = ?`, copyID).Scan(
+		&c.ID, &c.BookID, &c.Barcode, &c.BarcodeFormat, &c.Status, &c.NeedsRelabel, &c.AcquiredAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrCopyNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// UpdateCopyStatus sets the status of a single copy. Rejects values
+// outside the four constants with ErrCopyStatusInvalid; surfaces
+// ErrCopyNotFound when the copy id does not exist. Status changes
+// while the copy has an active loan are allowed (real libraries mark
+// a copy lost while it's still checked out to the patron who reported
+// it lost); the loan stays linked.
+func (dm *DatabaseManager) UpdateCopyStatus(copyID int, status string) error {
+	if !IsValidCopyStatus(status) {
+		return ErrCopyStatusInvalid
+	}
+	res, err := dm.db.Exec(`UPDATE copies SET status = ? WHERE id = ?`, status, copyID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrCopyNotFound
+	}
+	return nil
+}
+
+// DeleteCopy removes a copy after verifying it has no loan history.
+// Wraps the existence check + history check + delete in a transaction
+// so a concurrent loan insert cannot slip in between the guard and
+// the delete.
+func (dm *DatabaseManager) DeleteCopy(copyID int) error {
+	tx, err := dm.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var exists int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM copies WHERE id = ?`, copyID).Scan(&exists); err != nil {
+		return err
+	}
+	if exists == 0 {
+		return ErrCopyNotFound
+	}
+
+	var loanCount int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM loans WHERE copy_id = ?`, copyID).Scan(&loanCount); err != nil {
+		return err
+	}
+	if loanCount > 0 {
+		return ErrCopyHasLoans
+	}
+
+	if _, err := tx.Exec(`DELETE FROM copies WHERE id = ?`, copyID); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// copyDetailSelectCols is shared by GetCopiesByBookIDWithLoanInfo and
+// GetAllCopiesWithFilters. LastLoanAt is the latest checked_out_at
+// across the copy's loan history (null when never loaned); OnLoan is
+// 1 when at least one loan for this copy has no returned_at.
+const copyDetailSelectCols = `
+	c.id, c.book_id, c.barcode, c.barcode_format, c.status, c.needs_relabel, c.acquired_at,
+	b.title,
+	(SELECT MAX(l.checked_out_at) FROM loans l WHERE l.copy_id = c.id) AS last_loan_at,
+	(SELECT EXISTS (SELECT 1 FROM loans l WHERE l.copy_id = c.id AND l.returned_at IS NULL)) AS on_loan`
+
+func scanCopyDetail(rows interface {
+	Scan(...interface{}) error
+}, d *CopyDetail) error {
+	var onLoan int
+	if err := rows.Scan(&d.ID, &d.BookID, &d.Barcode, &d.BarcodeFormat,
+		&d.Status, &d.NeedsRelabel, &d.AcquiredAt,
+		&d.BookTitle, &d.LastLoanAt, &onLoan); err != nil {
+		return err
+	}
+	d.OnLoan = onLoan != 0
+	return nil
+}
+
+// GetCopiesByBookIDWithLoanInfo lists copies of a single book enriched
+// with last-loan timestamp and current-on-loan flag.
+func (dm *DatabaseManager) GetCopiesByBookIDWithLoanInfo(bookID int) ([]CopyDetail, error) {
+	rows, err := dm.db.Query(`
+		SELECT `+copyDetailSelectCols+`
+		FROM copies c JOIN books b ON c.book_id = b.id
+		WHERE c.book_id = ?
+		ORDER BY c.id`, bookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var copies []CopyDetail
+	for rows.Next() {
+		var d CopyDetail
+		if err := scanCopyDetail(rows, &d); err != nil {
+			return nil, err
+		}
+		copies = append(copies, d)
+	}
+	return copies, rows.Err()
+}
+
+// GetAllCopiesWithFilters returns every copy in the catalog ordered
+// by book title then copy id. The statusFilter argument, when one of
+// the four status constants, narrows to copies in that status; any
+// other value (including "all" and "") returns every status.
+// needsRelabelOnly, when true, narrows further to copies whose
+// needs_relabel flag is set.
+func (dm *DatabaseManager) GetAllCopiesWithFilters(statusFilter string, needsRelabelOnly bool) ([]CopyDetail, error) {
+	where := ""
+	args := []interface{}{}
+	if IsValidCopyStatus(statusFilter) {
+		where += " AND c.status = ?"
+		args = append(args, statusFilter)
+	}
+	if needsRelabelOnly {
+		where += " AND c.needs_relabel = 1"
+	}
+
+	rows, err := dm.db.Query(`
+		SELECT `+copyDetailSelectCols+`
+		FROM copies c JOIN books b ON c.book_id = b.id
+		WHERE 1=1`+where+`
+		ORDER BY b.title, c.id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var copies []CopyDetail
+	for rows.Next() {
+		var d CopyDetail
+		if err := scanCopyDetail(rows, &d); err != nil {
+			return nil, err
+		}
+		copies = append(copies, d)
+	}
+	return copies, rows.Err()
+}
 
 // GetCopyByBarcode looks up a copy by its barcode. Returns
 // ErrCopyNotFound when no copy with that barcode exists.
