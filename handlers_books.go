@@ -618,10 +618,19 @@ func HandleBookDelete(c *gin.Context) {
 	c.Redirect(http.StatusFound, "/catalog")
 }
 
-// HandleAddCopy creates one library-format copy for the given book. The
-// LSF barcode is allocated server-side; the response redirects back to
-// the book detail page with a flash naming the new barcode so the
-// staffer can print a label.
+// HandleAddCopy creates one or more copies for the given book. Form
+// fields:
+//   - source: "library" (default) or "scan"
+//   - count:  optional integer, only honored when source=library;
+//             defaults to 1, capped at MaxBulkCopiesPerRequest.
+//   - format: required when source=scan; one of
+//             code128 / code39 / ean13 / upca.
+//   - barcode: required when source=scan; the value to store.
+//
+// On success the response redirects back to the post-action
+// destination (the Manage Copies page if the request came from
+// there, else the book detail page) with a flash naming the new
+// barcode(s).
 func HandleAddCopy(c *gin.Context) {
 	dm := getDB(c)
 
@@ -650,16 +659,86 @@ func HandleAddCopy(c *gin.Context) {
 		return
 	}
 
-	_, barcode, err := dm.AddLibraryCopy(id)
-	if err != nil {
-		log.Printf("HandleAddCopy: AddLibraryCopy(%d): %v", id, err)
-		c.String(http.StatusInternalServerError, "Internal Server Error")
-		return
+	dest := addCopyRedirect(c, id)
+	source := strings.TrimSpace(c.PostForm("source"))
+	if source == "" {
+		source = "library"
 	}
 
-	setFlash(c, flashKindSuccess, "copy_added")
-	setFlashDetail(c, barcode)
-	c.Redirect(http.StatusFound, fmt.Sprintf("/books/%d", id))
+	switch source {
+	case "library":
+		count := 1
+		if raw := strings.TrimSpace(c.PostForm("count")); raw != "" {
+			n, parseErr := strconv.Atoi(raw)
+			if parseErr != nil || n < 1 {
+				setFlash(c, flashKindError, "copy_count_invalid")
+				c.Redirect(http.StatusFound, dest)
+				return
+			}
+			if n > MaxBulkCopiesPerRequest {
+				setFlash(c, flashKindError, "copy_count_too_large")
+				c.Redirect(http.StatusFound, dest)
+				return
+			}
+			count = n
+		}
+		created, err := dm.AddLibraryCopies(id, count)
+		if err != nil {
+			log.Printf("HandleAddCopy: AddLibraryCopies(%d, %d): %v", id, count, err)
+			c.String(http.StatusInternalServerError, "Internal Server Error")
+			return
+		}
+		if len(created) == 1 {
+			setFlash(c, flashKindSuccess, "copy_added")
+			setFlashDetail(c, created[0].Barcode)
+		} else {
+			setFlash(c, flashKindSuccess, "copy_added_bulk")
+			setFlashDetail(c, fmt.Sprintf("%d copies, %s through %s",
+				len(created), created[0].Barcode, created[len(created)-1].Barcode))
+		}
+
+	case "scan":
+		format := strings.TrimSpace(c.PostForm("format"))
+		barcode := strings.TrimSpace(c.PostForm("barcode"))
+		if barcode == "" {
+			setFlash(c, flashKindError, "barcode_value_invalid")
+			c.Redirect(http.StatusFound, dest)
+			return
+		}
+		_, err := dm.CreateCopyWithBarcode(id, barcode, format)
+		switch {
+		case err == nil:
+			setFlash(c, flashKindSuccess, "copy_added")
+			setFlashDetail(c, barcode)
+		case errors.Is(err, ErrBarcodeFormatInvalid):
+			setFlash(c, flashKindError, "barcode_format_invalid")
+		case errors.Is(err, ErrBarcodeFailsValidation):
+			setFlash(c, flashKindError, "barcode_value_invalid")
+		case errors.Is(err, ErrBarcodeAlreadyExists):
+			setFlash(c, flashKindError, "barcode_already_exists")
+		default:
+			log.Printf("HandleAddCopy: CreateCopyWithBarcode(%d, %q, %q): %v", id, barcode, format, err)
+			c.String(http.StatusInternalServerError, "Internal Server Error")
+			return
+		}
+
+	default:
+		setFlash(c, flashKindError, "copy_source_invalid")
+	}
+
+	c.Redirect(http.StatusFound, dest)
+}
+
+// addCopyRedirect chooses the post-add destination. If the form was
+// posted from the Manage Copies page (Referer suffix matches), stay
+// there. Otherwise return to book detail.
+func addCopyRedirect(c *gin.Context, bookID int) string {
+	bookPath := fmt.Sprintf("/books/%d", bookID)
+	copiesPath := fmt.Sprintf("/books/%d/copies", bookID)
+	if strings.HasSuffix(c.Request.Referer(), copiesPath) {
+		return copiesPath
+	}
+	return bookPath
 }
 
 // HandleKiosk renders the public kiosk catalog grid. Anonymous access:

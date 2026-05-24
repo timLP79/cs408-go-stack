@@ -1471,14 +1471,41 @@ func (dm *DatabaseManager) GetCopiesByBookID(bookID int) ([]Copy, error) {
 	return copies, rows.Err()
 }
 
-// AddLibraryCopy creates one library-format copy for the given book.
-// The next LSF sequence is allocated inside the same transaction so
-// concurrent callers get distinct barcodes. Returns the new copy id
-// and the allocated barcode.
-func (dm *DatabaseManager) AddLibraryCopy(bookID int) (int, string, error) {
+// CreatedCopy is a (id, barcode) tuple returned by the bulk creation
+// path so handlers can flash a useful detail string (e.g. the first
+// and last allocated barcodes in a range).
+type CreatedCopy struct {
+	ID      int
+	Barcode string
+}
+
+// MaxBulkCopiesPerRequest caps a single AddLibraryCopies call to
+// guard against accidental runaway requests. 50 has headroom for a
+// real shipment of duplicates without inviting "add a million"
+// fat-fingers.
+const MaxBulkCopiesPerRequest = 50
+
+// AddLibraryCopies allocates `count` consecutive LSF barcodes for the
+// book and inserts that many copy rows in a single transaction. The
+// MAX-query allocator runs once at the start of the tx; subsequent
+// inserts use seq+1, seq+2, ... so they are unique within the tx and
+// against any pre-existing rows. Returns the created copies in
+// allocation order so the caller can show the range to the user.
+//
+// Concurrent callers serialize on the SQLite writer lock (PRAGMA
+// busy_timeout queues losers until the winner commits), so each
+// call sees a fresh MAX before allocating its range.
+func (dm *DatabaseManager) AddLibraryCopies(bookID, count int) ([]CreatedCopy, error) {
+	if count < 1 {
+		return nil, fmt.Errorf("AddLibraryCopies: count must be >= 1, got %d", count)
+	}
+	if count > MaxBulkCopiesPerRequest {
+		return nil, fmt.Errorf("AddLibraryCopies: count %d exceeds cap %d", count, MaxBulkCopiesPerRequest)
+	}
+
 	tx, err := dm.db.Begin()
 	if err != nil {
-		return 0, "", err
+		return nil, err
 	}
 	defer tx.Rollback()
 
@@ -1487,26 +1514,70 @@ func (dm *DatabaseManager) AddLibraryCopy(bookID int) (int, string, error) {
 		SELECT COALESCE(MAX(CAST(substr(barcode, 4, 7) AS INTEGER)), 0) + 1
 		FROM copies
 		WHERE barcode LIKE 'LSF%' AND length(barcode) = 11`).Scan(&nextSeq); err != nil {
-		return 0, "", err
+		return nil, err
 	}
-	barcode, err := MakeLSFBarcode(nextSeq)
+
+	created := make([]CreatedCopy, 0, count)
+	for i := 0; i < count; i++ {
+		barcode, err := MakeLSFBarcode(nextSeq + i)
+		if err != nil {
+			return nil, err
+		}
+		res, err := tx.Exec(`
+			INSERT INTO copies (book_id, barcode, barcode_format)
+			VALUES (?, ?, ?)`, bookID, barcode, BarcodeFormatCode128)
+		if err != nil {
+			return nil, err
+		}
+		id64, err := res.LastInsertId()
+		if err != nil {
+			return nil, err
+		}
+		created = append(created, CreatedCopy{ID: int(id64), Barcode: barcode})
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return created, nil
+}
+
+// AddLibraryCopy is a thin back-compat wrapper around
+// AddLibraryCopies(bookID, 1). Returns the new copy id and barcode.
+func (dm *DatabaseManager) AddLibraryCopy(bookID int) (int, string, error) {
+	created, err := dm.AddLibraryCopies(bookID, 1)
 	if err != nil {
 		return 0, "", err
 	}
-	res, err := tx.Exec(`
+	return created[0].ID, created[0].Barcode, nil
+}
+
+// CreateCopyWithBarcode inserts a copy with a user-supplied barcode
+// in the named format (one of code128 / code39 / ean13 / upca).
+// Validates the value against the format up front; surfaces
+// ErrBarcodeFormatInvalid for unknown formats,
+// ErrBarcodeFailsValidation when the value does not match, and
+// ErrBarcodeAlreadyExists when the UNIQUE constraint on
+// copies.barcode trips.
+func (dm *DatabaseManager) CreateCopyWithBarcode(bookID int, barcode, format string) (int, error) {
+	if err := ValidateBarcode(barcode, format); err != nil {
+		return 0, err
+	}
+	res, err := dm.db.Exec(`
 		INSERT INTO copies (book_id, barcode, barcode_format)
-		VALUES (?, ?, ?)`, bookID, barcode, BarcodeFormatCode128)
+		VALUES (?, ?, ?)`, bookID, barcode, format)
 	if err != nil {
-		return 0, "", err
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") &&
+			strings.Contains(err.Error(), "copies.barcode") {
+			return 0, ErrBarcodeAlreadyExists
+		}
+		return 0, err
 	}
 	id64, err := res.LastInsertId()
 	if err != nil {
-		return 0, "", err
+		return 0, err
 	}
-	if err := tx.Commit(); err != nil {
-		return 0, "", err
-	}
-	return int(id64), barcode, nil
+	return int(id64), nil
 }
 
 func (dm *DatabaseManager) GetAllPatrons() ([]Patron, error) {

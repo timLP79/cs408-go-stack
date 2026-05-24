@@ -8,14 +8,14 @@
             ({{.Book.AvailableCopies}} available)
         </p>
     </div>
-    <form method="POST" action="/books/{{.Book.ID}}/copies" class="m-0">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <button type="submit" class="btn btn-outline-success btn-sm"
-                title="Add one library-format copy (LSF barcode generated server-side)">
-            + Add Copy
-        </button>
-    </form>
+    <button type="button" class="btn btn-outline-success btn-sm"
+            data-bs-toggle="modal" data-bs-target="#addCopyModal"
+            title="Add a copy: generate a library label or scan an existing publisher barcode">
+        + Add Copy
+    </button>
 </div>
+
+{{template "add_copy_modal" (dict "BookID" .Book.ID "CSRFToken" .CSRFToken)}}
 
 {{if .Error}}<div class="alert alert-danger alert-dismissible fade show" role="alert">
     {{.Error}}
