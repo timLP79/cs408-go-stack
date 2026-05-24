@@ -61,7 +61,7 @@
          data-authors="{{.Authors}}"
          data-isbn="{{if .ISBN}}{{deref .ISBN}}{{end}}"
          data-genre="{{if .Genre}}{{deref .Genre}}{{end}}"
-         data-available="{{.QuantityAvailable}}">
+         data-available="{{.AvailableCopies}}">
         <div class="card h-100">
             <div class="position-relative">
                 <div class="book-cover-placeholder">
@@ -69,7 +69,7 @@
                          class="card-img-top" alt="{{.Title}} cover"
                          onerror="this.onerror=null; this.src='/images/no-cover.svg';">
                 </div>
-                {{if gt .QuantityAvailable 0}}
+                {{if gt .AvailableCopies 0}}
                 <span class="badge availability-badge badge-available">Available</span>
                 {{else}}
                 <span class="badge availability-badge badge-checked-out">Checked Out</span>
@@ -81,7 +81,7 @@
                 {{if .Genre}}<p class="card-text small text-muted">{{deref .Genre}}</p>{{end}}
                 <hr>
                 <div class="d-flex justify-content-between align-items-center">
-                    <small class="text-muted">{{.QuantityAvailable}} of {{.QuantityTotal}} available</small>
+                    <small class="text-muted">{{.AvailableCopies}} of {{.TotalCopies}} available</small>
                     <a href="/books/{{.ID}}" class="text-decoration-none" style="color: #1e3a5f;">Details &rarr;</a>
                 </div>
             </div>

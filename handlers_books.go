@@ -207,7 +207,7 @@ func HandleBookCreate(c *gin.Context) {
 	description := strings.TrimSpace(c.PostForm("description"))
 	genre := normalizeFreeText(c.PostForm("genre"))
 	yearStr := strings.TrimSpace(c.PostForm("year"))
-	quantityStr := strings.TrimSpace(c.PostForm("quantity"))
+	dewey := strings.TrimSpace(c.PostForm("dewey"))
 
 	book := &Book{Title: title}
 	if isbnRaw != "" {
@@ -228,9 +228,8 @@ func HandleBookCreate(c *gin.Context) {
 			book.Year = &year
 		}
 	}
-	if q, err := strconv.Atoi(quantityStr); err == nil {
-		book.QuantityTotal = q
-		book.QuantityAvailable = q
+	if dewey != "" {
+		book.Dewey = &dewey
 	}
 
 	if title == "" || len(title) > 255 {
@@ -247,11 +246,6 @@ func HandleBookCreate(c *gin.Context) {
 	}
 	if len(authors) == 0 {
 		renderBookCreateForm(c, book, authorsText, "At least one author is required.")
-		return
-	}
-
-	if book.QuantityTotal < 1 {
-		renderBookCreateForm(c, book, authorsText, "Quantity must be a positive integer.")
 		return
 	}
 
@@ -437,7 +431,7 @@ func HandleBookUpdate(c *gin.Context) {
 	description := strings.TrimSpace(c.PostForm("description"))
 	genre := normalizeFreeText(c.PostForm("genre"))
 	yearStr := strings.TrimSpace(c.PostForm("year"))
-	quantityStr := strings.TrimSpace(c.PostForm("quantity"))
+	dewey := strings.TrimSpace(c.PostForm("dewey"))
 
 	book := &Book{ID: id, Title: title, CoverFilename: existing.CoverFilename}
 	if isbnRaw != "" {
@@ -458,9 +452,8 @@ func HandleBookUpdate(c *gin.Context) {
 			book.Year = &year
 		}
 	}
-	if q, err := strconv.Atoi(quantityStr); err == nil {
-		book.QuantityTotal = q
-		book.QuantityAvailable = q
+	if dewey != "" {
+		book.Dewey = &dewey
 	}
 
 	if title == "" || len(title) > 255 {
@@ -477,11 +470,6 @@ func HandleBookUpdate(c *gin.Context) {
 	}
 	if len(authors) == 0 {
 		renderBookEditForm(c, id, book, authorsText, "At least one author is required.")
-		return
-	}
-
-	if book.QuantityTotal < 1 {
-		renderBookEditForm(c, id, book, authorsText, "Quantity must be a positive integer.")
 		return
 	}
 
@@ -628,6 +616,50 @@ func HandleBookDelete(c *gin.Context) {
 	setFlash(c, flashKindSuccess, "book_deleted")
 	setFlashDetail(c, book.Title)
 	c.Redirect(http.StatusFound, "/catalog")
+}
+
+// HandleAddCopy creates one library-format copy for the given book. The
+// LSF barcode is allocated server-side; the response redirects back to
+// the book detail page with a flash naming the new barcode so the
+// staffer can print a label.
+func HandleAddCopy(c *gin.Context) {
+	dm := getDB(c)
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.Status(http.StatusNotFound)
+		renderTemplate(c, "error", gin.H{
+			"Title":   "Not Found",
+			"Status":  404,
+			"Message": "Page not found",
+		})
+		return
+	}
+
+	if _, err := dm.GetBookByID(id); err == sql.ErrNoRows {
+		c.Status(http.StatusNotFound)
+		renderTemplate(c, "error", gin.H{
+			"Title":   "Not Found",
+			"Status":  404,
+			"Message": "Book not found",
+		})
+		return
+	} else if err != nil {
+		log.Printf("HandleAddCopy: GetBookByID(%d): %v", id, err)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+
+	_, barcode, err := dm.AddLibraryCopy(id)
+	if err != nil {
+		log.Printf("HandleAddCopy: AddLibraryCopy(%d): %v", id, err)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+
+	setFlash(c, flashKindSuccess, "copy_added")
+	setFlashDetail(c, barcode)
+	c.Redirect(http.StatusFound, fmt.Sprintf("/books/%d", id))
 }
 
 // HandleKiosk renders the public kiosk catalog grid. Anonymous access:

@@ -65,11 +65,13 @@ func postBookMultipart(t *testing.T, router *gin.Engine, path string, sess *http
 // validBookFields returns a minimal-valid field set for HandleBookCreate.
 // Tests copy and mutate individual fields to exercise single-field
 // validation failures without respelling the full form each time.
+//
+// Quantity is no longer a book-level form field (DEC-037); inventory is
+// added per-copy via the add-a-copy flow after the book exists.
 func validBookFields() map[string]string {
 	return map[string]string{
-		"title":    "New Book",
-		"authors":  "Example Author",
-		"quantity": "3",
+		"title":   "New Book",
+		"authors": "Example Author",
 	}
 }
 
@@ -112,13 +114,13 @@ func TestBookCreateHappyPath(t *testing.T) {
 	}
 	found := false
 	for _, b := range books {
-		if b.Title == "New Book" && b.Authors == "Example Author" && b.QuantityTotal == 3 {
+		if b.Title == "New Book" && b.Authors == "Example Author" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("expected 'New Book' with author 'Example Author' and quantity 3 in catalog, got %+v", books)
+		t.Errorf("expected 'New Book' with author 'Example Author' in catalog, got %+v", books)
 	}
 }
 
@@ -262,23 +264,6 @@ func TestBookCreateRejectsNoAuthors(t *testing.T) {
 	}
 }
 
-// TestBookCreateRejectsZeroQuantity verifies quantity >= 1 is enforced
-// server-side. A zero quantity would mean "on the shelf but never
-// borrowable" which has no business meaning.
-func TestBookCreateRejectsZeroQuantity(t *testing.T) {
-	router, dm := setupTestRouter(t)
-	sess, csrf := loginAs(t, dm, "admin", "admin")
-
-	fields := validBookFields()
-	fields["quantity"] = "0"
-
-	rr := postBookMultipart(t, router, "/books", sess, csrf, fields, "", nil)
-
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 re-render, got %d. body: %s", rr.Code, rr.Body.String())
-	}
-}
-
 // TestBookCreateRejectsYearOutOfRange pins the 1500-2100 bound. 1400 is
 // chosen because typography pre-Gutenberg printing is clearly invalid
 // for a physical book record.
@@ -323,7 +308,7 @@ func TestBookCreateRejectsDuplicateISBN(t *testing.T) {
 
 	existingISBN := "9781234567897"
 	if _, err := dm.CreateBook(
-		&Book{Title: "Existing", ISBN: &existingISBN, QuantityTotal: 1, QuantityAvailable: 1},
+		&Book{Title: "Existing", ISBN: &existingISBN},
 		[]string{"Seed Author"},
 	); err != nil {
 		t.Fatalf("seed CreateBook: %v", err)
@@ -606,7 +591,7 @@ func mustCreateBookWithCover(t *testing.T, dm *DatabaseManager, title, isbn stri
 	if err := os.WriteFile(full, []byte("not-a-real-image"), 0o644); err != nil {
 		t.Fatalf("WriteFile cover: %v", err)
 	}
-	book := &Book{Title: title, CoverFilename: &filename, QuantityTotal: 1, QuantityAvailable: 1}
+	book := &Book{Title: title, CoverFilename: &filename}
 	if isbn != "" {
 		book.ISBN = &isbn
 	}
@@ -671,7 +656,7 @@ func TestBookUpdateHappyPath(t *testing.T) {
 	router, dm := setupTestRouter(t)
 	sess, csrf := loginAs(t, dm, "admin", "admin")
 
-	id, _ := dm.CreateBook(&Book{Title: "Original", QuantityTotal: 1, QuantityAvailable: 1}, []string{"Seed Author"})
+	id, _ := dm.CreateBook(&Book{Title: "Original"}, []string{"Seed Author"})
 
 	fields := map[string]string{
 		"title":    "Updated Title",
@@ -782,14 +767,14 @@ func TestBookUpdateRejectsDuplicateISBN(t *testing.T) {
 	takenISBN := "9781111111116"
 	takenTitle := "Taken"
 	if _, err := dm.CreateBook(
-		&Book{Title: takenTitle, ISBN: &takenISBN, QuantityTotal: 1, QuantityAvailable: 1},
+		&Book{Title: takenTitle, ISBN: &takenISBN},
 		[]string{"Seed Author"},
 	); err != nil {
 		t.Fatalf("seed taken book: %v", err)
 	}
 
 	targetID, err := dm.CreateBook(
-		&Book{Title: "Target", QuantityTotal: 1, QuantityAvailable: 1},
+		&Book{Title: "Target"},
 		[]string{"Seed Author"},
 	)
 	if err != nil {
@@ -829,7 +814,7 @@ func TestBookUpdateAllowsSameISBNOnSelfEdit(t *testing.T) {
 
 	isbn := "9782222222229"
 	id, err := dm.CreateBook(
-		&Book{Title: "SelfEdit", ISBN: &isbn, QuantityTotal: 1, QuantityAvailable: 1},
+		&Book{Title: "SelfEdit", ISBN: &isbn},
 		[]string{"Seed Author"},
 	)
 	if err != nil {
@@ -909,13 +894,8 @@ func TestBookDeleteRejectsWhenHasLoans(t *testing.T) {
 	router, dm := setupTestRouter(t)
 	sess, csrf := loginAs(t, dm, "admin", "admin")
 
-	id, err := dm.CreateBook(
-		&Book{Title: "BookWithLoan", QuantityTotal: 1, QuantityAvailable: 1},
-		[]string{"Seed Author"},
-	)
-	if err != nil {
-		t.Fatalf("CreateBook: %v", err)
-	}
+	id := mustCreateBook(t, dm, "BookWithLoan", 1)
+	copyID := firstCopyOf(t, dm, id)
 
 	res, err := dm.db.Exec("INSERT INTO patrons (name) VALUES (?)", "Loan Patron")
 	if err != nil {
@@ -923,8 +903,8 @@ func TestBookDeleteRejectsWhenHasLoans(t *testing.T) {
 	}
 	patronID, _ := res.LastInsertId()
 	if _, err := dm.db.Exec(
-		"INSERT INTO loans (book_id, patron_id, due_date) VALUES (?, ?, ?)",
-		id, patronID, "2026-05-01 00:00:00",
+		"INSERT INTO loans (copy_id, patron_id, due_date) VALUES (?, ?, ?)",
+		copyID, patronID, "2026-05-01 00:00:00",
 	); err != nil {
 		t.Fatalf("seed loan: %v", err)
 	}
@@ -953,7 +933,7 @@ func TestBookDeleteRejectsStaffRole(t *testing.T) {
 	sess, csrf := loginAs(t, dm, "staff1", "staff")
 
 	id, err := dm.CreateBook(
-		&Book{Title: "StaffShouldNotDelete", QuantityTotal: 1, QuantityAvailable: 1},
+		&Book{Title: "StaffShouldNotDelete"},
 		[]string{"Seed Author"},
 	)
 	if err != nil {
@@ -1193,14 +1173,8 @@ func TestCatalogFilterOutShowsOnlyOutOfStock(t *testing.T) {
 	router, dm := setupTestRouter(t)
 	sess, _ := loginAs(t, dm, "filter_staff", "staff")
 
-	outBook := &Book{Title: "OOS-Title-XYZZY", QuantityTotal: 1, QuantityAvailable: 0}
-	if _, err := dm.CreateBook(outBook, []string{"A"}); err != nil {
-		t.Fatalf("CreateBook outBook: %v", err)
-	}
-	inBook := &Book{Title: "InStock-Title-PLUGH", QuantityTotal: 1, QuantityAvailable: 1}
-	if _, err := dm.CreateBook(inBook, []string{"B"}); err != nil {
-		t.Fatalf("CreateBook inBook: %v", err)
-	}
+	mustCreateBookWithAvailable(t, dm, "OOS-Title-XYZZY", 1, 0)
+	mustCreateBookWithAvailable(t, dm, "InStock-Title-PLUGH", 1, 1)
 
 	req, _ := http.NewRequest("GET", "/catalog?filter=out", nil)
 	req.AddCookie(sess)
@@ -1228,14 +1202,8 @@ func TestCatalogNoFilterShowsAllBooks(t *testing.T) {
 	router, dm := setupTestRouter(t)
 	sess, _ := loginAs(t, dm, "noflt_staff", "staff")
 
-	outBook := &Book{Title: "OOS-AllView-XYZZY", QuantityTotal: 1, QuantityAvailable: 0}
-	if _, err := dm.CreateBook(outBook, []string{"A"}); err != nil {
-		t.Fatalf("CreateBook outBook: %v", err)
-	}
-	inBook := &Book{Title: "InStock-AllView-PLUGH", QuantityTotal: 1, QuantityAvailable: 1}
-	if _, err := dm.CreateBook(inBook, []string{"B"}); err != nil {
-		t.Fatalf("CreateBook inBook: %v", err)
-	}
+	mustCreateBookWithAvailable(t, dm, "OOS-AllView-XYZZY", 1, 0)
+	mustCreateBookWithAvailable(t, dm, "InStock-AllView-PLUGH", 1, 1)
 
 	req, _ := http.NewRequest("GET", "/catalog", nil)
 	req.AddCookie(sess)
@@ -1324,7 +1292,7 @@ func TestHandleBookUpdate_CoverURLSkippedWhenOffline(t *testing.T) {
 	sess, csrf := loginAs(t, dm, "admin", "admin")
 
 	// Pre-seed a book with no cover.
-	id, err := dm.CreateBook(&Book{Title: "Existing", QuantityTotal: 1, QuantityAvailable: 1}, []string{"Author"})
+	id, err := dm.CreateBook(&Book{Title: "Existing"}, []string{"Author"})
 	if err != nil {
 		t.Fatalf("CreateBook: %v", err)
 	}
@@ -1353,5 +1321,110 @@ func TestHandleBookUpdate_CoverURLSkippedWhenOffline(t *testing.T) {
 	}
 	if got.CoverFilename != nil {
 		t.Errorf("expected nil cover_filename after offline skip, got %q", *got.CoverFilename)
+	}
+}
+
+// ---------- HandleAddCopy ----------
+
+// TestAddCopyHappyPath pins POST /books/:id/copies: the handler
+// allocates an LSF barcode via AddLibraryCopy, flashes copy_added with
+// the barcode as detail, redirects to /books/:id. The new copy is
+// queryable via GetCopyByBarcode.
+func TestAddCopyHappyPath(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "admin", "admin")
+	bookID := mustCreateBook(t, dm, "Empty Inventory", 0)
+
+	rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/copies", bookID), sess, csrf, nil)
+
+	if rr.Code != http.StatusFound {
+		t.Fatalf("expected 302, got %d. body: %s", rr.Code, rr.Body.String())
+	}
+	if loc := rr.Header().Get("Location"); loc != fmt.Sprintf("/books/%d", bookID) {
+		t.Errorf("expected redirect to /books/%d, got %q", bookID, loc)
+	}
+	if got := flashCode(rr, "flash_success"); got != "copy_added" {
+		t.Errorf("expected flash_success=copy_added, got %q", got)
+	}
+	barcode := flashCode(rr, "flash_detail")
+	if !strings.HasPrefix(barcode, "LSF") || len(barcode) != 11 {
+		t.Errorf("expected LSF barcode in flash_detail, got %q", barcode)
+	}
+
+	copies, err := dm.GetCopiesByBookID(bookID)
+	if err != nil {
+		t.Fatalf("GetCopiesByBookID: %v", err)
+	}
+	if len(copies) != 1 {
+		t.Fatalf("expected 1 copy after add, got %d", len(copies))
+	}
+	if copies[0].Barcode != barcode {
+		t.Errorf("flash barcode %q != stored barcode %q", barcode, copies[0].Barcode)
+	}
+	if copies[0].BarcodeFormat != "code128" {
+		t.Errorf("BarcodeFormat = %q, want code128", copies[0].BarcodeFormat)
+	}
+	if copies[0].Status != "available" {
+		t.Errorf("Status = %q, want available", copies[0].Status)
+	}
+}
+
+// TestAddCopyMonotonicLSF pins that consecutive AddCopy calls allocate
+// distinct LSF sequences. Without monotonic allocation the second call
+// would collide on the UNIQUE barcode constraint and the handler would
+// surface a 500.
+func TestAddCopyMonotonicLSF(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "admin", "admin")
+	bookID := mustCreateBook(t, dm, "Two Copies", 0)
+
+	for i := 0; i < 2; i++ {
+		rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/copies", bookID), sess, csrf, nil)
+		if rr.Code != http.StatusFound {
+			t.Fatalf("add %d: status = %d, want 302; body=%s", i+1, rr.Code, rr.Body.String())
+		}
+	}
+
+	copies, err := dm.GetCopiesByBookID(bookID)
+	if err != nil {
+		t.Fatalf("GetCopiesByBookID: %v", err)
+	}
+	if len(copies) != 2 {
+		t.Fatalf("expected 2 copies, got %d", len(copies))
+	}
+	if copies[0].Barcode == copies[1].Barcode {
+		t.Errorf("expected distinct barcodes, got %q and %q", copies[0].Barcode, copies[1].Barcode)
+	}
+}
+
+// TestAddCopyBookNotFound pins the 404 path: adding a copy to a
+// nonexistent book id renders the error page, not a 500 or a phantom
+// copy row.
+func TestAddCopyBookNotFound(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "admin", "admin")
+
+	rr := postStaffForm(t, router, "/books/99999/copies", sess, csrf, nil)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rr.Code)
+	}
+}
+
+// TestAddCopyNonStaffForbidden pins the auth gate: a patron-role user
+// cannot POST /books/:id/copies.
+func TestAddCopyNonStaffForbidden(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf, _ := loginAsPatron(t, dm, "Borrower")
+	bookID := mustCreateBook(t, dm, "Restricted", 0)
+
+	rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/copies", bookID), sess, csrf, nil)
+
+	if rr.Code != http.StatusForbidden && rr.Code != http.StatusFound {
+		t.Errorf("expected 403 (or 302 redirect to login), got %d", rr.Code)
+	}
+	copies, _ := dm.GetCopiesByBookID(bookID)
+	if len(copies) != 0 {
+		t.Errorf("patron should not have been able to add copies; got %d", len(copies))
 	}
 }

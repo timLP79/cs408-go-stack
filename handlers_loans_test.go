@@ -68,15 +68,17 @@ func loginAsPatron(t *testing.T, dm *DatabaseManager, name string) (*http.Cookie
 
 // TestCheckoutHappyPath pins POST /books/:id/checkout: redirect to
 // /books/:id, success flash with code loan_checkout_success, loan row
-// created, quantity_available decremented.
+// created, derived available count drops by one.
 func TestCheckoutHappyPath(t *testing.T) {
 	router, dm := setupTestRouter(t)
 	sess, csrf := loginAs(t, dm, "admin", "admin")
 	bookID := seedLoanFixtureBook(t, dm, "Checkout Target", 2)
 	patronID := seedLoanFixturePatron(t, dm, "Checkout Patron")
+	barcode := firstAvailableBarcodeOf(t, dm, bookID)
 
 	rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/checkout", bookID), sess, csrf, map[string]string{
 		"patron_id": fmt.Sprintf("%d", patronID),
+		"barcode":   barcode,
 	})
 
 	if rr.Code != http.StatusFound {
@@ -89,26 +91,25 @@ func TestCheckoutHappyPath(t *testing.T) {
 		t.Errorf("expected flash_success=loan_checkout_success, got %q", got)
 	}
 
-	var count, available int
-	if err := dm.db.QueryRow(
-		`SELECT COUNT(*) FROM loans WHERE book_id = ? AND patron_id = ? AND returned_at IS NULL`,
+	var count int
+	if err := dm.db.QueryRow(`
+		SELECT COUNT(*) FROM loans l
+		JOIN copies c ON l.copy_id = c.id
+		WHERE c.book_id = ? AND l.patron_id = ? AND l.returned_at IS NULL`,
 		bookID, patronID).Scan(&count); err != nil {
 		t.Fatalf("count loans: %v", err)
 	}
 	if count != 1 {
 		t.Errorf("expected 1 active loan, got %d", count)
 	}
-	if err := dm.db.QueryRow(`SELECT quantity_available FROM books WHERE id = ?`, bookID).Scan(&available); err != nil {
-		t.Fatalf("query quantity: %v", err)
-	}
-	if available != 1 {
-		t.Errorf("expected quantity_available=1, got %d", available)
+	if got := availableCopiesOf(t, dm, bookID); got != 1 {
+		t.Errorf("expected 1 available copy, got %d", got)
 	}
 }
 
 // TestCheckoutMissingPatronID pins the validation guard: missing or
 // empty patron_id flashes loan_patron_required and redirects without
-// creating a loan.
+// creating a loan. patron is validated before barcode.
 func TestCheckoutMissingPatronID(t *testing.T) {
 	router, dm := setupTestRouter(t)
 	sess, csrf := loginAs(t, dm, "admin", "admin")
@@ -126,7 +127,10 @@ func TestCheckoutMissingPatronID(t *testing.T) {
 	}
 
 	var count int
-	if err := dm.db.QueryRow(`SELECT COUNT(*) FROM loans WHERE book_id = ?`, bookID).Scan(&count); err != nil {
+	if err := dm.db.QueryRow(`
+		SELECT COUNT(*) FROM loans l
+		JOIN copies c ON l.copy_id = c.id
+		WHERE c.book_id = ?`, bookID).Scan(&count); err != nil {
 		t.Fatalf("count loans: %v", err)
 	}
 	if count != 0 {
@@ -146,9 +150,11 @@ func TestCheckoutBlockedByOverdue(t *testing.T) {
 
 	yesterday := time.Now().AddDate(0, 0, -1).UTC().Format("2006-01-02")
 	mustInsertLoan(t, dm, overdueBook, patronID, yesterday, "")
+	barcode := firstAvailableBarcodeOf(t, dm, wantedBook)
 
 	rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/checkout", wantedBook), sess, csrf, map[string]string{
 		"patron_id": fmt.Sprintf("%d", patronID),
+		"barcode":   barcode,
 	})
 
 	if rr.Code != http.StatusFound {
@@ -173,8 +179,10 @@ func TestCheckoutBlockedByLimit(t *testing.T) {
 	}
 
 	straw := seedLoanFixtureBook(t, dm, "The Straw", 1)
+	barcode := firstAvailableBarcodeOf(t, dm, straw)
 	rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/checkout", straw), sess, csrf, map[string]string{
 		"patron_id": fmt.Sprintf("%d", patronID),
+		"barcode":   barcode,
 	})
 
 	if rr.Code != http.StatusFound {
@@ -186,15 +194,22 @@ func TestCheckoutBlockedByLimit(t *testing.T) {
 }
 
 // TestCheckoutNoCopiesAvailable pins the ErrNoCopiesAvailable -> flash
-// mapping for a book with quantity_available = 0.
+// mapping when the scanned copy is already on loan. The handler looks
+// up the copy by barcode, validates the book matches, then calls
+// CheckoutBook which returns ErrNoCopiesAvailable because the copy is
+// not in the available pool.
 func TestCheckoutNoCopiesAvailable(t *testing.T) {
 	router, dm := setupTestRouter(t)
 	sess, csrf := loginAs(t, dm, "admin", "admin")
-	bookID := seedLoanFixtureBook(t, dm, "Out of Stock", 0)
-	patronID := seedLoanFixturePatron(t, dm, "Eager Patron")
+	bookID := seedLoanFixtureBook(t, dm, "Out of Stock", 1)
+	firstPatron := seedLoanFixturePatron(t, dm, "First Patron")
+	barcode := firstAvailableBarcodeOf(t, dm, bookID)
+	mustCheckout(t, dm, bookID, firstPatron, time.Now().AddDate(0, 0, DefaultLoanTermDays))
 
+	secondPatron := seedLoanFixturePatron(t, dm, "Eager Patron")
 	rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/checkout", bookID), sess, csrf, map[string]string{
-		"patron_id": fmt.Sprintf("%d", patronID),
+		"patron_id": fmt.Sprintf("%d", secondPatron),
+		"barcode":   barcode,
 	})
 
 	if rr.Code != http.StatusFound {
@@ -239,18 +254,19 @@ func TestCheckoutNonNumericBookID(t *testing.T) {
 // ---------- HandleReturn ----------
 
 // TestReturnHappyPath pins POST /loans/:id/return: redirect to /loans,
-// success flash, returned_at is set, quantity_available is restored.
+// success flash, returned_at is set, derived available count restored.
 func TestReturnHappyPath(t *testing.T) {
 	router, dm := setupTestRouter(t)
 	sess, csrf := loginAs(t, dm, "admin", "admin")
 	bookID := seedLoanFixtureBook(t, dm, "Return Target", 1)
 	patronID := seedLoanFixturePatron(t, dm, "Returnee")
+	mustCheckout(t, dm, bookID, patronID, time.Now().AddDate(0, 0, DefaultLoanTermDays))
 
-	if err := dm.CheckoutBook(bookID, patronID, time.Now().AddDate(0, 0, DefaultLoanTermDays)); err != nil {
-		t.Fatalf("CheckoutBook setup: %v", err)
-	}
 	var loanID int
-	if err := dm.db.QueryRow(`SELECT id FROM loans WHERE book_id = ?`, bookID).Scan(&loanID); err != nil {
+	if err := dm.db.QueryRow(`
+		SELECT l.id FROM loans l
+		JOIN copies c ON l.copy_id = c.id
+		WHERE c.book_id = ?`, bookID).Scan(&loanID); err != nil {
 		t.Fatalf("query loan id: %v", err)
 	}
 
@@ -274,12 +290,8 @@ func TestReturnHappyPath(t *testing.T) {
 		t.Errorf("expected returned_at set after return")
 	}
 
-	var available int
-	if err := dm.db.QueryRow(`SELECT quantity_available FROM books WHERE id = ?`, bookID).Scan(&available); err != nil {
-		t.Fatalf("query quantity: %v", err)
-	}
-	if available != 1 {
-		t.Errorf("expected quantity_available=1 after return, got %d", available)
+	if got := availableCopiesOf(t, dm, bookID); got != 1 {
+		t.Errorf("expected available copies=1 after return, got %d", got)
 	}
 }
 
@@ -290,12 +302,13 @@ func TestReturnAlreadyReturned(t *testing.T) {
 	sess, csrf := loginAs(t, dm, "admin", "admin")
 	bookID := seedLoanFixtureBook(t, dm, "Twice Returned", 1)
 	patronID := seedLoanFixturePatron(t, dm, "Quick Returner")
+	mustCheckout(t, dm, bookID, patronID, time.Now().AddDate(0, 0, DefaultLoanTermDays))
 
-	if err := dm.CheckoutBook(bookID, patronID, time.Now().AddDate(0, 0, DefaultLoanTermDays)); err != nil {
-		t.Fatalf("CheckoutBook setup: %v", err)
-	}
 	var loanID int
-	if err := dm.db.QueryRow(`SELECT id FROM loans WHERE book_id = ?`, bookID).Scan(&loanID); err != nil {
+	if err := dm.db.QueryRow(`
+		SELECT l.id FROM loans l
+		JOIN copies c ON l.copy_id = c.id
+		WHERE c.book_id = ?`, bookID).Scan(&loanID); err != nil {
 		t.Fatalf("query loan id: %v", err)
 	}
 	if err := dm.ReturnBook(loanID); err != nil {

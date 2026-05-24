@@ -432,17 +432,13 @@ func TestPatronDeleteRejectsWhenHasLoans(t *testing.T) {
 	if err != nil {
 		t.Fatalf("seed patron: %v", err)
 	}
-	// Seed a book to reference from loans (foreign key).
-	bookID, err := dm.CreateBook(
-		&Book{Title: "Loaned Book", QuantityTotal: 1, QuantityAvailable: 1},
-		[]string{"Seed Author"},
-	)
-	if err != nil {
-		t.Fatalf("seed book: %v", err)
-	}
+	// Seed a book + one copy to reference from loans (foreign key).
+	bookID := mustCreateBook(t, dm, "Loaned Book", 1)
+	copyID := firstCopyOf(t, dm, bookID)
+	_ = bookID
 	if _, err := dm.db.Exec(
-		"INSERT INTO loans (book_id, patron_id, due_date) VALUES (?, ?, ?)",
-		bookID, patronID, "2026-05-01 00:00:00",
+		"INSERT INTO loans (copy_id, patron_id, due_date) VALUES (?, ?, ?)",
+		copyID, patronID, "2026-05-01 00:00:00",
 	); err != nil {
 		t.Fatalf("seed loan: %v", err)
 	}

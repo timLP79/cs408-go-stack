@@ -165,8 +165,15 @@ func TestBackupImport_Happy(t *testing.T) {
 	}
 	backupZip := rr.Body.Bytes()
 
-	// Mutate: delete one book directly.
-	if _, err := dm.db.Exec(`DELETE FROM books WHERE id = (SELECT MIN(id) FROM books)`); err != nil {
+	// Mutate: delete one book and its copies (FK ordering).
+	var victimID int
+	if err := dm.db.QueryRow(`SELECT MIN(id) FROM books`).Scan(&victimID); err != nil {
+		t.Fatalf("pick victim book: %v", err)
+	}
+	if _, err := dm.db.Exec(`DELETE FROM copies WHERE book_id = ?`, victimID); err != nil {
+		t.Fatalf("delete copies: %v", err)
+	}
+	if _, err := dm.db.Exec(`DELETE FROM books WHERE id = ?`, victimID); err != nil {
 		t.Fatalf("delete book: %v", err)
 	}
 	if c, _ := dm.CountBooks(); c == initialCount {

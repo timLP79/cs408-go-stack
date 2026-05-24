@@ -26,18 +26,51 @@ const (
 )
 
 type Book struct {
-	ID                int
-	Title             string
-	ISBN              *string
-	CoverFilename     *string
-	Year              *int
-	Publisher         *string
-	Description       *string
-	Genre             *string
-	QuantityTotal     int
-	QuantityAvailable int
-	Authors           string
+	ID            int
+	Title         string
+	ISBN          *string
+	CoverFilename *string
+	Year          *int
+	Publisher     *string
+	Description   *string
+	Genre         *string
+	Dewey         *string
+	Authors       string
+	// AvailableCopies and TotalCopies are derived from the copies and
+	// loans tables at query time and are not stored on the books row.
+	// AvailableCopies counts copies whose status = 'available' and that
+	// are not currently checked out. TotalCopies counts copies whose
+	// status != 'withdrawn'.
+	AvailableCopies int
+	TotalCopies     int
 }
+
+// Copy represents one physical book on the shelf. See DEC-037.
+type Copy struct {
+	ID            int
+	BookID        int
+	Barcode       string
+	BarcodeFormat string
+	Status        string
+	NeedsRelabel  bool
+	AcquiredAt    string
+}
+
+// Copy status values.
+const (
+	CopyStatusAvailable = "available"
+	CopyStatusLost      = "lost"
+	CopyStatusDamaged   = "damaged"
+	CopyStatusWithdrawn = "withdrawn"
+)
+
+// Copy barcode_format values.
+const (
+	BarcodeFormatCode128 = "code128"
+	BarcodeFormatCode39  = "code39"
+	BarcodeFormatEAN13   = "ean13"
+	BarcodeFormatUPCA    = "upca"
+)
 
 type Author struct {
 	ID   int
@@ -113,52 +146,27 @@ func (dm *DatabaseManager) GetAllStaff() ([]StaffMember, error) {
 	return staff, rows.Err()
 }
 
+// bookSelectCols is the column list used by GetAllBooks, GetBookByID,
+// and GetOutOfStockBooks. AvailableCopies and TotalCopies are derived
+// at query time from the copies + loans tables; see DEC-037.
+const bookSelectCols = `
+	b.id, b.title, b.isbn, b.cover_filename, b.year, b.publisher,
+	b.description, b.genre, b.dewey,
+	(SELECT COUNT(*) FROM copies c WHERE c.book_id = b.id
+		AND c.status = 'available'
+		AND c.id NOT IN (SELECT copy_id FROM loans WHERE returned_at IS NULL)
+	) AS available_copies,
+	(SELECT COUNT(*) FROM copies c WHERE c.book_id = b.id
+		AND c.status != 'withdrawn'
+	) AS total_copies`
+
 func (dm *DatabaseManager) GetAllBooks() ([]Book, error) {
 	rows, err := dm.db.Query(`
-			SELECT b.id, b.title, b.isbn, b.cover_filename, b.year, b.publisher,
-                   b.description, b.genre, b.quantity_total, b.quantity_available,                                                                                                        
-                   GROUP_CONCAT(a.name, ', ') AS authors
-                FROM books b                                                                                                                                                                  
-                LEFT JOIN book_authors ba ON b.id = ba.book_id                                                                                                                                
-                LEFT JOIN authors a ON ba.author_id = a.id                                                                                                                                    
-                GROUP BY b.id                                                                                                                                                                 
-                ORDER BY b.title`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var books []Book
-	for rows.Next() {
-		var book Book
-		var authors *string
-		if err := rows.Scan(&book.ID, &book.Title, &book.ISBN, &book.CoverFilename,
-			&book.Year, &book.Publisher, &book.Description, &book.Genre,
-			&book.QuantityTotal, &book.QuantityAvailable, &authors); err != nil {
-			return nil, err
-		}
-		if authors != nil {
-			book.Authors = *authors
-		}
-		books = append(books, book)
-	}
-	return books, rows.Err()
-}
-
-// GetOutOfStockBooks returns books whose quantity_available is 0
-// (every copy is checked out). Used by HandleCatalog when invoked
-// with ?filter=out so the dashboard's Out-of-Stock card can deep-link
-// into a filtered catalog view. The shape matches GetAllBooks so the
-// same template renders the result.
-func (dm *DatabaseManager) GetOutOfStockBooks() ([]Book, error) {
-	rows, err := dm.db.Query(`
-		SELECT b.id, b.title, b.isbn, b.cover_filename, b.year, b.publisher,
-		       b.description, b.genre, b.quantity_total, b.quantity_available,
+		SELECT ` + bookSelectCols + `,
 		       GROUP_CONCAT(a.name, ', ') AS authors
 		FROM books b
 		LEFT JOIN book_authors ba ON b.id = ba.book_id
 		LEFT JOIN authors a ON ba.author_id = a.id
-		WHERE b.quantity_available = 0
 		GROUP BY b.id
 		ORDER BY b.title`)
 	if err != nil {
@@ -172,7 +180,47 @@ func (dm *DatabaseManager) GetOutOfStockBooks() ([]Book, error) {
 		var authors *string
 		if err := rows.Scan(&book.ID, &book.Title, &book.ISBN, &book.CoverFilename,
 			&book.Year, &book.Publisher, &book.Description, &book.Genre,
-			&book.QuantityTotal, &book.QuantityAvailable, &authors); err != nil {
+			&book.Dewey, &book.AvailableCopies, &book.TotalCopies, &authors); err != nil {
+			return nil, err
+		}
+		if authors != nil {
+			book.Authors = *authors
+		}
+		books = append(books, book)
+	}
+	return books, rows.Err()
+}
+
+// GetOutOfStockBooks returns books with zero available copies (every
+// non-withdrawn copy is either checked out, lost, or damaged). Used by
+// HandleCatalog when invoked with ?filter=out so the dashboard's
+// Out-of-Stock card can deep-link into a filtered catalog view.
+//
+// A book with TotalCopies == 0 (no inventory at all) is excluded so
+// the view shows titles that exist physically but are unavailable,
+// not titles for which no copies have been added yet.
+func (dm *DatabaseManager) GetOutOfStockBooks() ([]Book, error) {
+	rows, err := dm.db.Query(`
+		SELECT ` + bookSelectCols + `,
+		       GROUP_CONCAT(a.name, ', ') AS authors
+		FROM books b
+		LEFT JOIN book_authors ba ON b.id = ba.book_id
+		LEFT JOIN authors a ON ba.author_id = a.id
+		GROUP BY b.id
+		HAVING total_copies > 0 AND available_copies = 0
+		ORDER BY b.title`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var books []Book
+	for rows.Next() {
+		var book Book
+		var authors *string
+		if err := rows.Scan(&book.ID, &book.Title, &book.ISBN, &book.CoverFilename,
+			&book.Year, &book.Publisher, &book.Description, &book.Genre,
+			&book.Dewey, &book.AvailableCopies, &book.TotalCopies, &authors); err != nil {
 			return nil, err
 		}
 		if authors != nil {
@@ -185,13 +233,12 @@ func (dm *DatabaseManager) GetOutOfStockBooks() ([]Book, error) {
 
 func (dm *DatabaseManager) GetBookByID(id int) (*Book, error) {
 	book := &Book{}
-	err := dm.db.QueryRow(`         
-                SELECT id, title, isbn, cover_filename, year, publisher,
-                       description, genre, quantity_total, quantity_available
-                FROM books WHERE id = ?`, id).Scan(
+	err := dm.db.QueryRow(`
+		SELECT `+bookSelectCols+`
+		FROM books b WHERE b.id = ?`, id).Scan(
 		&book.ID, &book.Title, &book.ISBN, &book.CoverFilename,
 		&book.Year, &book.Publisher, &book.Description, &book.Genre,
-		&book.QuantityTotal, &book.QuantityAvailable)
+		&book.Dewey, &book.AvailableCopies, &book.TotalCopies)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +281,12 @@ func (dm *DatabaseManager) GetBookByISBN(isbn string) (*Book, error) {
 	return book, nil
 }
 
-func (dm *DatabaseManager) CheckoutBook(bookID, patronID int, dueDate time.Time) error {
+// CheckoutBook creates a loan for a specific physical copy. Three guards
+// run inside the transaction (DEC-031 TOCTOU pattern): the patron must
+// have zero overdue loans, fewer than MaxActiveLoansPerPatron active
+// loans, and the copy must be available (status = 'available' and not
+// currently on loan).
+func (dm *DatabaseManager) CheckoutBook(copyID, patronID int, dueDate time.Time) error {
 	tx, err := dm.db.Begin()
 	if err != nil {
 		return err
@@ -266,25 +318,23 @@ func (dm *DatabaseManager) CheckoutBook(bookID, patronID int, dueDate time.Time)
 		return ErrPatronAtLoanLimit
 	}
 
-	var available int
-	if err := tx.QueryRow(
-		`SELECT quantity_available FROM books WHERE id = ?`,
-		bookID).Scan(&available); err != nil {
+	var status string
+	var onLoan int
+	if err := tx.QueryRow(`
+			SELECT c.status,
+			       (SELECT COUNT(*) FROM loans l
+			        WHERE l.copy_id = c.id AND l.returned_at IS NULL)
+			FROM copies c WHERE c.id = ?`,
+		copyID).Scan(&status, &onLoan); err != nil {
 		return err
 	}
-	if available <= 0 {
+	if status != CopyStatusAvailable || onLoan > 0 {
 		return ErrNoCopiesAvailable
 	}
 
 	if _, err := tx.Exec(
-		`INSERT INTO loans (book_id, patron_id, due_date) VALUES (?, ?, ?)`,
-		bookID, patronID, dueDate.UTC().Format("2006-01-02")); err != nil {
-		return err
-	}
-
-	if _, err := tx.Exec(
-		`UPDATE books SET quantity_available = quantity_available - 1 WHERE id = ?`,
-		bookID); err != nil {
+		`INSERT INTO loans (copy_id, patron_id, due_date) VALUES (?, ?, ?)`,
+		copyID, patronID, dueDate.UTC().Format("2006-01-02")); err != nil {
 		return err
 	}
 
@@ -298,11 +348,10 @@ func (dm *DatabaseManager) ReturnBook(loanID int) error {
 	}
 	defer tx.Rollback()
 
-	var bookID int
 	var returnedAt sql.NullString
 	if err := tx.QueryRow(
-		`SELECT book_id, returned_at FROM loans WHERE id = ?`,
-		loanID).Scan(&bookID, &returnedAt); err != nil {
+		`SELECT returned_at FROM loans WHERE id = ?`,
+		loanID).Scan(&returnedAt); err != nil {
 		return err
 	}
 	if returnedAt.Valid {
@@ -315,21 +364,16 @@ func (dm *DatabaseManager) ReturnBook(loanID int) error {
 		return err
 	}
 
-	if _, err := tx.Exec(
-		`UPDATE books SET quantity_available = quantity_available + 1 WHERE id = ?`,
-		bookID); err != nil {
-		return err
-	}
-
 	return tx.Commit()
 }
 
 func (dm *DatabaseManager) GetLoanHistory(bookID int) ([]LoanRecord, error) {
 	rows, err := dm.db.Query(`                         
                 SELECT l.id, p.name, l.checked_out_at, l.due_date, l.returned_at                                                                                                              
-                FROM loans l             
+                FROM loans l
+                JOIN copies c ON l.copy_id = c.id
                 JOIN patrons p ON l.patron_id = p.id
-                WHERE l.book_id = ?                  
+                WHERE c.book_id = ?
                 ORDER BY l.checked_out_at DESC`, bookID)
 	if err != nil {
 		return nil, err
@@ -359,7 +403,8 @@ func (dm *DatabaseManager) GetActiveLoans() ([]LoanListRow, error) {
 			SELECT l.id, b.id, b.title, p.id, p.name, l.due_date,
 				CAST(julianday('now') - julianday(l.due_date) AS INTEGER) AS days_overdue
 			FROM loans l
-			JOIN books b ON l.book_id = b.id
+			JOIN copies c ON l.copy_id = c.id
+			JOIN books b ON c.book_id = b.id
 			JOIN patrons p ON l.patron_id = p.id
 			WHERE l.returned_at IS NULL
 				AND l.due_date >= DATE('now')
@@ -386,7 +431,8 @@ func (dm *DatabaseManager) GetOverdueLoans() ([]LoanListRow, error) {
 			SELECT l.id, b.id, b.title, p.id, p.name, l.due_date,
 				CAST(julianday('now') - julianday(l.due_date) AS INTEGER) AS days_overdue
 			FROM loans l
-			JOIN books b ON l.book_id = b.id
+			JOIN copies c ON l.copy_id = c.id
+			JOIN books b ON c.book_id = b.id
 			JOIN patrons p ON l.patron_id = p.id
 			WHERE l.returned_at IS NULL
 				AND l.due_date < DATE('now')
@@ -413,7 +459,8 @@ func (dm *DatabaseManager) GetPatronActiveLoans(patronID int) ([]LoanListRow, er
 			SELECT l.id, b.id, b.title, p.id, p.name, l.due_date,
 				CAST(julianday('now') - julianday(l.due_date) AS INTEGER) AS days_overdue
 			FROM loans l
-			JOIN books b ON l.book_id = b.id
+			JOIN copies c ON l.copy_id = c.id
+			JOIN books b ON c.book_id = b.id
 			JOIN patrons p ON l.patron_id = p.id
 			WHERE l.returned_at IS NULL
 				AND l.patron_id = ?
@@ -442,7 +489,8 @@ func (dm *DatabaseManager) GetPatronOverdueLoansForNotice(patronID int) ([]Overd
 		       l.due_date,
 		       CAST(julianday('now') - julianday(l.due_date) AS INTEGER) AS days_overdue
 		FROM loans l
-		JOIN books b ON l.book_id = b.id
+		JOIN copies c ON l.copy_id = c.id
+		JOIN books b ON c.book_id = b.id
 		LEFT JOIN book_authors ba ON b.id = ba.book_id
 		LEFT JOIN authors a ON ba.author_id = a.id
 		WHERE l.returned_at IS NULL
@@ -484,11 +532,19 @@ func (dm *DatabaseManager) CountOverdueLoans() (int, error) {
 	return count, err
 }
 
+// CountOutOfStock returns the number of books that have at least one
+// non-withdrawn copy but zero copies currently available for checkout
+// (every copy is checked out, lost, or damaged). Books with no inventory
+// at all are excluded; see GetOutOfStockBooks for the rationale.
 func (dm *DatabaseManager) CountOutOfStock() (int, error) {
 	var count int
 	err := dm.db.QueryRow(`
-			SELECT COUNT(*) FROM books
-			WHERE quantity_available = 0`).Scan(&count)
+		SELECT COUNT(*) FROM books b
+		WHERE (SELECT COUNT(*) FROM copies c WHERE c.book_id = b.id AND c.status != 'withdrawn') > 0
+		  AND (SELECT COUNT(*) FROM copies c WHERE c.book_id = b.id
+		         AND c.status = 'available'
+		         AND c.id NOT IN (SELECT copy_id FROM loans WHERE returned_at IS NULL)
+		      ) = 0`).Scan(&count)
 	return count, err
 }
 
@@ -645,16 +701,15 @@ func (dm *DatabaseManager) RestoreSessions(sessions []sessionRow) error {
 
 func (dm *DatabaseManager) createSchema() {
 	schema := `CREATE TABLE IF NOT EXISTS books (
-		id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-		title              TEXT NOT NULL,
-		isbn               TEXT UNIQUE,
-		cover_filename     TEXT,
-		year               INTEGER,
-		publisher          TEXT,
-		description        TEXT,
-		genre              TEXT,
-		quantity_total     INTEGER DEFAULT 1,
-		quantity_available INTEGER DEFAULT 1
+		id             INTEGER PRIMARY KEY AUTOINCREMENT,
+		title          TEXT NOT NULL,
+		isbn           TEXT UNIQUE,
+		cover_filename TEXT,
+		year           INTEGER,
+		publisher      TEXT,
+		description    TEXT,
+		genre          TEXT,
+		dewey          TEXT
 	);
 
 	CREATE TABLE IF NOT EXISTS authors (
@@ -669,6 +724,19 @@ func (dm *DatabaseManager) createSchema() {
 		PRIMARY KEY (book_id, author_id)
 	);
 
+	CREATE TABLE IF NOT EXISTS copies (
+		id             INTEGER PRIMARY KEY AUTOINCREMENT,
+		book_id        INTEGER NOT NULL REFERENCES books(id),
+		barcode        TEXT NOT NULL UNIQUE,
+		barcode_format TEXT NOT NULL DEFAULT 'code128',
+		status         TEXT NOT NULL DEFAULT 'available',
+		needs_relabel  INTEGER NOT NULL DEFAULT 0,
+		acquired_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_copies_book_id ON copies(book_id);
+	CREATE INDEX IF NOT EXISTS idx_copies_status ON copies(status);
+
 	CREATE TABLE IF NOT EXISTS patrons (
 		id          INTEGER PRIMARY KEY AUTOINCREMENT,
 		name        TEXT NOT NULL,
@@ -681,12 +749,15 @@ func (dm *DatabaseManager) createSchema() {
 
 	CREATE TABLE IF NOT EXISTS loans (
 		id             INTEGER PRIMARY KEY AUTOINCREMENT,
-		book_id        INTEGER NOT NULL REFERENCES books(id),
+		copy_id        INTEGER NOT NULL REFERENCES copies(id),
 		patron_id      INTEGER NOT NULL REFERENCES patrons(id),
 		checked_out_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		due_date       TEXT NOT NULL,
 		returned_at    DATETIME
 	);
+
+	CREATE INDEX IF NOT EXISTS idx_loans_copy_id ON loans(copy_id);
+	CREATE INDEX IF NOT EXISTS idx_loans_patron_id ON loans(patron_id);
 
 	CREATE TABLE IF NOT EXISTS users (
 		id                   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -723,6 +794,10 @@ func (dm *DatabaseManager) createSchema() {
 	if _, err := dm.db.Exec(`ALTER TABLE patrons ADD COLUMN address TEXT`); err != nil &&
 		!strings.Contains(err.Error(), "duplicate column") {
 		log.Fatalf("Failed to add patrons.address column: %v", err)
+	}
+	if _, err := dm.db.Exec(`ALTER TABLE books ADD COLUMN dewey TEXT`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column") {
+		log.Fatalf("Failed to add books.dewey column: %v", err)
 	}
 
 	log.Println("Database schema ready")
@@ -1025,186 +1100,6 @@ func (dm *DatabaseManager) seedLinkedPatron(username, passwordHash, patronName s
 	return tx.Commit()
 }
 
-type seedBook struct {
-	title       string
-	isbn        string
-	year        int
-	publisher   string
-	description string
-	genre       string
-	quantity    int
-	authors     []string
-}
-
-func (dm *DatabaseManager) SeedBooks() {
-	var count int
-	if err := dm.db.QueryRow("SELECT COUNT(*) FROM books").Scan(&count); err != nil {
-		log.Fatalf("Failed to check book count: %v", err)
-	}
-	if count > 0 {
-		return
-	}
-
-	books := []seedBook{
-		{
-			title:       "Pride and Prejudice",
-			isbn:        "9780141439518",
-			year:        1813,
-			publisher:   "Penguin Classics",
-			description: "A romantic novel of manners that chronicles the emotional development of Elizabeth Bennet.",
-			genre:       "Classic Literature",
-			quantity:    3,
-			authors:     []string{"Jane Austen"},
-		},
-		{
-			title:       "To Kill a Mockingbird",
-			isbn:        "9780061120084",
-			year:        1960,
-			publisher:   "Harper Perennial",
-			description: "A novel about racial injustice in the American South, seen through the eyes of a young girl.",
-			genre:       "Classic Literature",
-			quantity:    4,
-			authors:     []string{"Harper Lee"},
-		},
-		{
-			title:       "1984",
-			isbn:        "9780451524935",
-			year:        1949,
-			publisher:   "Signet Classics",
-			description: "A dystopian novel set in a totalitarian society ruled by Big Brother.",
-			genre:       "Science Fiction",
-			quantity:    2,
-			authors:     []string{"George Orwell"},
-		},
-		{
-			title:       "The Great Gatsby",
-			isbn:        "9780743273565",
-			year:        1925,
-			publisher:   "Scribner",
-			description: "A story of wealth, class, and the American Dream in the Jazz Age.",
-			genre:       "Classic Literature",
-			quantity:    2,
-			authors:     []string{"F. Scott Fitzgerald"},
-		},
-		{
-			title:       "Good Omens",
-			isbn:        "9780060853983",
-			year:        1990,
-			publisher:   "William Morrow",
-			description: "An angel and a demon team up to prevent the apocalypse.",
-			genre:       "Fantasy",
-			quantity:    3,
-			authors:     []string{"Neil Gaiman", "Terry Pratchett"},
-		},
-		{
-			title:       "Dune",
-			isbn:        "9780441013593",
-			year:        1965,
-			publisher:   "Ace Books",
-			description: "An epic science fiction novel set on the desert planet Arrakis.",
-			genre:       "Science Fiction",
-			quantity:    2,
-			authors:     []string{"Frank Herbert"},
-		},
-		{
-			title:       "The Catcher in the Rye",
-			isbn:        "9780316769488",
-			year:        1951,
-			publisher:   "Little, Brown and Company",
-			description: "A disillusioned teenager wanders New York after being expelled from prep school.",
-			genre:       "Classic Literature",
-			quantity:    3,
-			authors:     []string{"J.D. Salinger"},
-		},
-		{
-			title:       "Brave New World",
-			isbn:        "9780060850524",
-			year:        1932,
-			publisher:   "Harper Perennial",
-			description: "A dystopian society engineered for stability through conditioning and pleasure.",
-			genre:       "Science Fiction",
-			quantity:    3,
-			authors:     []string{"Aldous Huxley"},
-		},
-		{
-			title:       "Jane Eyre",
-			isbn:        "9780141441146",
-			year:        1847,
-			publisher:   "Penguin Classics",
-			description: "An orphaned governess falls for her brooding employer and uncovers his secret.",
-			genre:       "Classic Literature",
-			quantity:    2,
-			authors:     []string{"Charlotte Bronte"},
-		},
-		{
-			title:       "Wuthering Heights",
-			isbn:        "9780141439556",
-			year:        1847,
-			publisher:   "Penguin Classics",
-			description: "A passionate, destructive love story set on the windswept Yorkshire moors.",
-			genre:       "Classic Literature",
-			quantity:    2,
-			authors:     []string{"Emily Bronte"},
-		},
-	}
-
-	for _, b := range books {
-		if err := dm.seedOneBook(b); err != nil {
-			log.Fatalf("Failed to seed book %q: %v", b.title, err)
-		}
-	}
-
-	log.Printf("Seeded %d books", len(books))
-}
-
-func (dm *DatabaseManager) seedOneBook(b seedBook) error {
-	tx, err := dm.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	result, err := tx.Exec(`
-		INSERT INTO books (title, isbn, year, publisher, description, genre,
-		                   quantity_total, quantity_available)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		b.title, b.isbn, b.year, b.publisher, b.description, b.genre,
-		b.quantity, b.quantity)
-	if err != nil {
-		return err
-	}
-	bookID, err := result.LastInsertId()
-	if err != nil {
-		return err
-	}
-
-	for _, authorName := range b.authors {
-		var authorID int64
-		err := tx.QueryRow("SELECT id FROM authors WHERE name = ?", authorName).Scan(&authorID)
-		if err == sql.ErrNoRows {
-			res, execErr := tx.Exec("INSERT INTO authors (name) VALUES (?)", authorName)
-			if execErr != nil {
-				return execErr
-			}
-			authorID, err = res.LastInsertId()
-			if err != nil {
-				return err
-			}
-		} else if err != nil {
-			return err
-		}
-
-		if _, err := tx.Exec(
-			"INSERT INTO book_authors (book_id, author_id) VALUES (?, ?)",
-			bookID, authorID,
-		); err != nil {
-			return err
-		}
-	}
-
-	return tx.Commit()
-}
-
 func findOrCreateAuthor(tx *sql.Tx, name string) (int, error) {
 	var id int
 	err := tx.QueryRow("SELECT id FROM authors WHERE name = ?", name).Scan(&id)
@@ -1233,11 +1128,10 @@ func (dm *DatabaseManager) CreateBook(book *Book, authors []string) (int, error)
 	defer tx.Rollback()
 
 	result, err := tx.Exec(`
-			INSERT INTO books (title, isbn, cover_filename, year, publisher, description, genre, quantity_total, quantity_available)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			INSERT INTO books (title, isbn, cover_filename, year, publisher, description, genre, dewey)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		book.Title, book.ISBN, book.CoverFilename, book.Year,
-		book.Publisher, book.Description, book.Genre,
-		book.QuantityTotal, book.QuantityAvailable)
+		book.Publisher, book.Description, book.Genre, book.Dewey)
 	if err != nil {
 		return 0, err
 	}
@@ -1277,11 +1171,10 @@ func (dm *DatabaseManager) UpdateBook(id int, book *Book, authors []string) erro
 	if _, err := tx.Exec(`
 		UPDATE books
 		SET title = ?, isbn = ?, cover_filename = ?, year = ?, publisher = ?,
-		    description = ?, genre = ?, quantity_total = ?, quantity_available = ?
+		    description = ?, genre = ?, dewey = ?
 		WHERE id = ?`,
 		book.Title, book.ISBN, book.CoverFilename, book.Year,
-		book.Publisher, book.Description, book.Genre,
-		book.QuantityTotal, book.QuantityAvailable, id); err != nil {
+		book.Publisher, book.Description, book.Genre, book.Dewey, id); err != nil {
 		return err
 	}
 
@@ -1320,11 +1213,18 @@ func (dm *DatabaseManager) DeleteBook(id int) error {
 	defer tx.Rollback()
 
 	var loanCount int
-	if err := tx.QueryRow("SELECT COUNT(*) FROM loans WHERE book_id = ?", id).Scan(&loanCount); err != nil {
+	if err := tx.QueryRow(`
+		SELECT COUNT(*) FROM loans l
+		JOIN copies c ON l.copy_id = c.id
+		WHERE c.book_id = ?`, id).Scan(&loanCount); err != nil {
 		return err
 	}
 	if loanCount > 0 {
 		return ErrBookHasLoans
+	}
+
+	if _, err := tx.Exec("DELETE FROM copies WHERE book_id = ?", id); err != nil {
+		return err
 	}
 
 	if _, err := tx.Exec("DELETE FROM books WHERE id = ?", id); err != nil {
@@ -1341,7 +1241,86 @@ var (
 	ErrLoanAlreadyReturned = errors.New("db: loan already returned")
 	ErrPatronHasOverdue    = errors.New("db: patron has overdue loans, cannot check out")
 	ErrPatronAtLoanLimit   = errors.New("db: patron at max active loans")
+	ErrCopyNotFound        = errors.New("db: copy not found")
+	ErrCopyBookMismatch    = errors.New("db: barcode does not belong to this book")
 )
+
+// GetCopyByBarcode looks up a copy by its barcode. Returns
+// ErrCopyNotFound when no copy with that barcode exists.
+func (dm *DatabaseManager) GetCopyByBarcode(barcode string) (*Copy, error) {
+	c := &Copy{}
+	err := dm.db.QueryRow(`
+		SELECT id, book_id, barcode, barcode_format, status, needs_relabel, acquired_at
+		FROM copies WHERE barcode = ?`, barcode).Scan(
+		&c.ID, &c.BookID, &c.Barcode, &c.BarcodeFormat, &c.Status, &c.NeedsRelabel, &c.AcquiredAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrCopyNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// GetCopiesByBookID returns all copies of the given book ordered by id.
+func (dm *DatabaseManager) GetCopiesByBookID(bookID int) ([]Copy, error) {
+	rows, err := dm.db.Query(`
+		SELECT id, book_id, barcode, barcode_format, status, needs_relabel, acquired_at
+		FROM copies WHERE book_id = ? ORDER BY id`, bookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var copies []Copy
+	for rows.Next() {
+		var c Copy
+		if err := rows.Scan(&c.ID, &c.BookID, &c.Barcode, &c.BarcodeFormat,
+			&c.Status, &c.NeedsRelabel, &c.AcquiredAt); err != nil {
+			return nil, err
+		}
+		copies = append(copies, c)
+	}
+	return copies, rows.Err()
+}
+
+// AddLibraryCopy creates one library-format copy for the given book.
+// The next LSF sequence is allocated inside the same transaction so
+// concurrent callers get distinct barcodes. Returns the new copy id
+// and the allocated barcode.
+func (dm *DatabaseManager) AddLibraryCopy(bookID int) (int, string, error) {
+	tx, err := dm.db.Begin()
+	if err != nil {
+		return 0, "", err
+	}
+	defer tx.Rollback()
+
+	var nextSeq int
+	if err := tx.QueryRow(`
+		SELECT COALESCE(MAX(CAST(substr(barcode, 4, 7) AS INTEGER)), 0) + 1
+		FROM copies
+		WHERE barcode LIKE 'LSF%' AND length(barcode) = 11`).Scan(&nextSeq); err != nil {
+		return 0, "", err
+	}
+	barcode, err := MakeLSFBarcode(nextSeq)
+	if err != nil {
+		return 0, "", err
+	}
+	res, err := tx.Exec(`
+		INSERT INTO copies (book_id, barcode, barcode_format)
+		VALUES (?, ?, ?)`, bookID, barcode, BarcodeFormatCode128)
+	if err != nil {
+		return 0, "", err
+	}
+	id64, err := res.LastInsertId()
+	if err != nil {
+		return 0, "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, "", err
+	}
+	return int(id64), barcode, nil
+}
 
 func (dm *DatabaseManager) GetAllPatrons() ([]Patron, error) {
 	rows, err := dm.db.Query(`
