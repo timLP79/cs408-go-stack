@@ -10,6 +10,10 @@ without logging in. All checkout and return transactions are handled by staff.
 
 - Book catalog with search, genre filter, and availability filter
 - Open Library ISBN lookup with cover image preview on add/edit
+- Per-physical-copy inventory: every book has one or more `copies` rows, each with its own barcode and status (DEC-037)
+- Library-format barcode generator (`LSF` prefix + 7-digit sequence + Luhn check digit, rendered as Code 128); publisher EAN-13 / UPC-A barcodes also storable
+- Manage Copies page per book + top-level Inventory listing with status filters (available / lost / damaged / withdrawn) and a needs-relabel filter
+- Barcode-driven checkout: staff scans / types the copy barcode and the handler validates it belongs to the title before creating a loan
 - Loan transactions with overdue tracking; due dates derived from `due_date` and `returned_at`, not stored
 - Three-role access model: admin, staff, patron
 - Public kiosk for anonymous catalog browsing
@@ -41,7 +45,9 @@ go run .
 ```
 
 Visit `http://localhost:3000`. The schema is created on first run, and three default accounts
-are seeded (see below).
+are seeded (see below). The catalog starts empty; add books through the UI or set
+`LIBRESHELF_SEED_DEV_BOOKS=1` to populate a fixed dev fixture (~10 well-known titles, one
+library-format copy per quantity slot) on first run.
 
 ## Default Accounts
 
@@ -65,6 +71,8 @@ the policy is enforced at startup. See [DEC-021](./DECISIONS.md) for the rationa
 | `/catalog` | Searchable book grid | Any logged-in user |
 | `/books/:id` | Book detail with availability and loan history | Any logged-in user |
 | `/books/new`, `/books/:id/edit` | Add or edit a book, with Open Library lookup | Staff + admin |
+| `/books/:id/copies` | Per-book Manage Copies page with status / delete actions | Staff + admin |
+| `/inventory` | Top-level inventory listing with status + needs-relabel filters | Staff + admin |
 | `/patrons` | Patron management with add / edit / delete modals | Staff + admin |
 | `/staff` | Staff management with add / edit / delete / reset-password modals | Admin |
 | `/admin` | Admin tools index | Admin |
@@ -82,6 +90,9 @@ the policy is enforced at startup. See [DEC-021](./DECISIONS.md) for the rationa
 | `DB_NAME` | `database.sqlite` | Database filename |
 | `ADMIN_PASSWORD` | `Admin123!` | Override the seeded admin password. Validated against the password policy at startup |
 | `APP_ENV` | (unset) | Set to `production` to enable the `Secure` cookie flag and HSTS |
+| `LIBRESHELF_SEED_DEV_BOOKS` | (unset) | Set to any non-empty value to populate the dev fixture catalog on first run. Production installs leave this unset and start with an empty catalog |
+| `LIBRESHELF_OFFLINE` | (unset) | Set to `true` to lock offline mode (skip all external API calls); runtime DB setting is ignored until unset |
+| `GOOGLE_BOOKS_API_KEY` | (unset) | Optional. When set, the OL enrichment chain fans out to Google Books as a fallback for books OL does not catalog (DEC-035) |
 
 ## Documentation
 
@@ -94,10 +105,11 @@ the policy is enforced at startup. See [DEC-021](./DECISIONS.md) for the rationa
 
 ## Status
 
-Feature-complete for the original v1 scope. Open follow-up work tracked locally via the beads
-tool (run `bd list --status=open`): SSE live availability, favorites, patron holds, CSV patron
-import, fuller dashboard with mini-lists, server-side catalog pagination, overdue notice print
-system, and a few UX polish items.
+CS408 v1 scope shipped; CP8 (per-physical-copy inventory + multi-format barcodes + label
+printing) is the current focus. 2 of 6 CP8 issues merged as of 2026-05-24 (Foundation +
+Manage Copies); remaining: multi-format copy entry, Print Labels page, Dewey enrichment,
+rapid-scan portal rebuild. See `docs/specs/2026-05-23-inventory-copies-design.md` for the
+chain and `bd list --status=open` for the live backlog.
 
 ## License
 

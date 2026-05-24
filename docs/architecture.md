@@ -37,9 +37,14 @@ For numbered design decisions see [`../DECISIONS.md`](../DECISIONS.md).
 | `GET /kiosk` | Public anonymous catalog | Public |
 | `GET /kiosk/books/:id` | Public read-only book detail | Public |
 | `GET /loans` | Active / overdue loan list with filter | Staff + admin |
-| `POST /books/:id/checkout` | Check out a copy to a patron | Staff + admin |
+| `POST /books/:id/checkout` | Check out a specific copy to a patron (barcode required) | Staff + admin |
 | `POST /loans/:id/return` | Return a checked-out copy | Staff + admin |
 | `GET /my/loans` | Patron's own active loans | Patron |
+| `GET /books/:id/copies` | Per-book Manage Copies page (DEC-037) | Staff + admin |
+| `POST /books/:id/copies` | Add one library-format copy (LSF barcode allocated server-side) | Staff + admin |
+| `GET /inventory` | Top-level inventory listing with status + needs-relabel filters | Staff + admin |
+| `POST /copies/:id/status` | Mark copy lost / damaged / withdrawn / available | Staff + admin |
+| `POST /copies/:id/delete` | Delete a copy (rejected if it has loan history) | Staff + admin |
 | `GET /patrons` | Patron list | Staff + admin |
 | `POST /patrons` | Create patron | Staff + admin |
 | `POST /patrons/:id/edit` | Edit patron | Staff + admin |
@@ -77,17 +82,22 @@ For numbered design decisions see [`../DECISIONS.md`](../DECISIONS.md).
 
 ```sql
 CREATE TABLE books (
-    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    isbn               TEXT UNIQUE,                       -- null for books without ISBN
-    title              TEXT NOT NULL,
-    publisher          TEXT,
-    year               INTEGER,
-    description        TEXT,
-    cover_filename     TEXT,                              -- filename only; file lives in DATA_DIR/covers/
-    genre              TEXT,
-    quantity_total     INTEGER DEFAULT 1,
-    quantity_available INTEGER DEFAULT 1                  -- decremented on checkout, incremented on return
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    isbn           TEXT UNIQUE,                       -- null for books without ISBN
+    title          TEXT NOT NULL,
+    publisher      TEXT,
+    year           INTEGER,
+    description    TEXT,
+    cover_filename TEXT,                              -- filename only; file lives in DATA_DIR/covers/
+    genre          TEXT,
+    dewey          TEXT                               -- Dewey decimal / call number; populated manually or by OL enrichment (DEC-037)
 );
+
+-- books has no quantity columns post-DEC-037. Availability is derived
+-- from the copies + loans tables at query time:
+--   total_copies     = COUNT(*) FROM copies WHERE book_id = ? AND status != 'withdrawn'
+--   available_copies = COUNT(*) FROM copies WHERE book_id = ? AND status = 'available'
+--                                                            AND id NOT IN (active loans)
 
 CREATE TABLE authors (
     id   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,24 +111,40 @@ CREATE TABLE book_authors (
     PRIMARY KEY (book_id, author_id)
 );
 
+-- copies is the per-physical-book inventory table introduced in DEC-037.
+-- Each row is one physical copy with its own barcode and status.
+CREATE TABLE copies (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    book_id        INTEGER NOT NULL REFERENCES books(id),
+    barcode        TEXT NOT NULL UNIQUE,                  -- LSF library code OR publisher EAN-13/UPC-A
+    barcode_format TEXT NOT NULL DEFAULT 'code128',       -- one of: code128, code39, ean13, upca
+    status         TEXT NOT NULL DEFAULT 'available',     -- available / lost / damaged / withdrawn
+    needs_relabel  INTEGER NOT NULL DEFAULT 0,            -- 1 = label needs printing/reprinting (DEC-037)
+    acquired_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_copies_book_id ON copies(book_id);
+CREATE INDEX idx_copies_status ON copies(status);
+
 CREATE TABLE patrons (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     name        TEXT NOT NULL,
     email       TEXT,
     phone       TEXT,
+    address     TEXT,                                     -- street address for printed overdue notices (DEC-036)
     joined_date DATETIME DEFAULT CURRENT_TIMESTAMP,
     metadata    TEXT                                      -- JSON, nullable; UI deferred (DEC-016)
 );
 
 CREATE TABLE loans (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    book_id        INTEGER REFERENCES books(id),
-    patron_id      INTEGER REFERENCES patrons(id),
-    checked_out_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    due_date       DATE NOT NULL,
-    returned_at    DATETIME,                              -- NULL while still checked out
-    fine_cents     INTEGER NOT NULL DEFAULT 0             -- reserved for future fine tracking (DEC-026)
+    copy_id        INTEGER NOT NULL REFERENCES copies(id),  -- per-copy, not per-title, post-DEC-037
+    patron_id      INTEGER NOT NULL REFERENCES patrons(id),
+    checked_out_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    due_date       TEXT NOT NULL,                           -- TEXT, not DATE: modernc.org/sqlite driver auto-parses DATE columns
+    returned_at    DATETIME                                 -- NULL while still checked out
 );
+CREATE INDEX idx_loans_copy_id ON loans(copy_id);
+CREATE INDEX idx_loans_patron_id ON loans(patron_id);
 
 -- Overdue is never stored; computed at query time:
 --   returned_at IS NULL AND due_date < DATE('now')
@@ -179,6 +205,11 @@ libreshelf/
 ├── handlers_staff_test.go
 ├── handlers_loans.go             # Checkout / return + /loans list view + /my/loans
 ├── handlers_loans_test.go
+├── handlers_copies.go            # Manage Copies + Inventory + status / delete actions (DEC-037)
+├── handlers_copies_test.go
+├── barcodes.go                   # LSF library barcode format + Luhn check digit (DEC-037)
+├── barcodes_test.go
+├── seed_books.go                 # Dev-only seed fixture (LIBRESHELF_SEED_DEV_BOOKS env gate)
 ├── handlers_kiosk_test.go
 ├── db_loans_test.go
 ├── handlers_admin.go             # Admin tools index + backup export / import (DEC-027, DEC-029)

@@ -1,14 +1,14 @@
 # Per-Physical-Copy Inventory with Multi-Format Barcodes (CP8 scope)
 
-Status: Design approved 2026-05-23. Implementation sliced into 6 bd issues (see Slicing section).
+Status: Design approved 2026-05-23. Implementation sliced into 6 bd issues (see Slicing section). 2 of 6 shipped as of 2026-05-24.
 Owner: Tim Palacios
 Related bd issues:
-- cs408-go-stack-e9a (1, Foundation) -- schema + migration + library-format add
-- cs408-go-stack-stb (2) -- multi-format copy entry + bulk add
-- cs408-go-stack-zbi (3) -- Manage Copies + status editing
-- cs408-go-stack-l9m (4) -- Print Labels + boombuler/barcode + Avery 5160
-- cs408-go-stack-8vi (5) -- Dewey enrichment chain extension
-- cs408-go-stack-1v5 (6) -- rapid-scan portal rebuild (closes cs408-go-stack-yu3)
+- [x] cs408-go-stack-e9a (1, Foundation) -- shipped via PR #89, merged 2026-05-23
+- [ ] cs408-go-stack-stb (2) -- multi-format copy entry + bulk add (ready)
+- [x] cs408-go-stack-zbi (3) -- Manage Copies + status editing -- shipped via PR #90, merged 2026-05-24
+- [ ] cs408-go-stack-l9m (4) -- Print Labels + boombuler/barcode + Avery 5160 (ready)
+- [ ] cs408-go-stack-8vi (5) -- Dewey enrichment chain extension (ready)
+- [ ] cs408-go-stack-1v5 (6) -- rapid-scan portal rebuild (blocked on 2; closes cs408-go-stack-yu3)
 - cs408-go-stack-yu3 -- paused rapid-scan portal, unblocked by this chain
 Supersedes (partially): the prior LSF-only barcode sketch captured in bd memory `inventory-copies-barcodes-design`. This spec expands the format set and the label content per the 2026-05-23 conversation.
 
@@ -432,46 +432,52 @@ Six issues, dependency ordering noted. The whole chain is roughly
 CP8-sized; targeting "ship one issue per week" so the chain lands
 across June 2026.
 
-1. **Foundation** (`cs408-go-stack-e9a`, P1). Schema reshape (new
-   `books` / `loans` / `copies` shapes in `createSchema`; local wipe
-   documented in CLAUDE.md), `books.dewey` column, LSF barcode
-   generator, rewrite of every handler / DB method that currently
-   reads or writes `books.quantity_*` or `loans.book_id` to use
-   `copies` instead, single-copy library-format add on book detail,
-   book-detail Check Out barcode prompt, seed + schema tests, handler
-   tests for the new add-a-copy and Check Out paths. Blocks
-   everything else.
+1. **Foundation** (`cs408-go-stack-e9a`, P1). **SHIPPED via PR #89 (merged 2026-05-23).**
+   Schema reshape (new `books` / `loans` / `copies` shapes in
+   `createSchema`; local wipe documented in CLAUDE.md), `books.dewey`
+   column, LSF barcode generator, rewrite of every handler / DB
+   method that previously read or wrote `books.quantity_*` or
+   `loans.book_id` to use `copies` instead, single-copy library-format
+   add on book detail, book-detail Check Out barcode prompt, seed +
+   schema tests, handler tests for the add-a-copy and Check Out
+   paths. Blocked everything else; now unblocks 2, 3, 5.
 2. **Multi-format copy entry + bulk add** (`cs408-go-stack-stb`, P2). Format selector in
    add-a-copy modal (Code 128 / Code 39 / EAN-13 / UPC-A) with
    per-format validation, "Add N copies" bulk variant for library
-   format. Depends on (1).
-3. **Manage Copies UI + status editing** (`cs408-go-stack-zbi`, P2). `/books/:id/copies`
-   page, mark lost / damaged / withdrawn actions, needs-relabel
-   filter, sidebar Inventory section. Depends on (1).
+   format. Depends on (1) -- ready.
+3. **Manage Copies UI + status editing** (`cs408-go-stack-zbi`, P2). **SHIPPED via PR #90 (merged 2026-05-24).**
+   `/books/:id/copies` per-book page + `/inventory` top-level page,
+   mark lost / damaged / withdrawn actions via per-row Bootstrap
+   dropdown, delete with loan-history guard, needs-relabel filter
+   chip (forward-compatible; populated by (4) when that ships),
+   sidebar Inventory section under Circulation. Spec said
+   `/inventory` admin-only; relaxed to staff-actionable post-design
+   review to match Add Copy / Edit Book pattern.
 4. **Label printing** (`cs408-go-stack-l9m`, P2). `boombuler/barcode` dependency, Avery
    5160 layout, `/admin/inventory/print-labels` page, label content
    (barcode SVG + author prefix + Dewey), `@media print` CSS,
    re-print single label from Manage Copies, clear `needs_relabel`
-   on confirmed reprint. Depends on (1); preferred after (3) so the
-   Manage Copies re-print link has a destination.
+   on confirmed reprint. Depends on (1); now ready since (3)
+   provides the Manage Copies re-print link target.
 5. **Dewey enrichment chain** (`cs408-go-stack-8vi`, P3). Extend OL enrichment to fetch
    `dewey_decimal_class`, manual override in book edit form. Can
-   land in parallel with (2), (3), (4). Depends on (1) for the
-   column.
+   land in parallel with (2), (4). Depends on (1) for the column --
+   ready.
 6. **Rebuild rapid-scan portal on copies** (`cs408-go-stack-1v5`, P2). Reclaim and close
    cs408-go-stack-yu3. Swap `GetActiveLoanByISBN` for
    `GetActiveLoanByBarcode`, rebuild the portal from main with the
    copies-model backing. Depends on (1) and (2). The existing
    `feat/rapid-scan-portal` branch is reference-only; do not
-   salvage.
+   salvage. Blocked on (2).
 
 ## Open questions deferred
 
-- LSF sequence allocation: dedicated `sequences` table or
-  `MAX(barcode) WHERE barcode LIKE 'LSF%'` query? Foundation issue
-  decides. The simpler `MAX` query is fine unless we hit a
-  concurrent-add race; with library volumes that race is
-  theoretical.
+- LSF sequence allocation: ~~dedicated `sequences` table or
+  `MAX(barcode) WHERE barcode LIKE 'LSF%'` query?~~ **Resolved by
+  Foundation (PR #89):** the MAX-query approach inside the
+  `AddLibraryCopy` transaction. Concurrent-add race is theoretical
+  at library volumes, and a collision would fail the UNIQUE
+  constraint and be retried by the caller.
 - Print sheet sizes beyond the four CP8 presets (Avery 5163, 5366,
   Dymo 30252, etc.). Backlog; add presets per librarian request.
 - Text-only spine labels (small stock like Avery 5167) as a separate
