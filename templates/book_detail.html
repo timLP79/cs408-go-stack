@@ -10,6 +10,7 @@
                 + Add Copy
             </button>
         </form>
+        <a href="/books/{{.Book.ID}}/copies" class="btn btn-outline-secondary btn-sm">Manage Copies</a>
         <a href="/books/{{.Book.ID}}/edit" class="btn btn-outline-primary btn-sm">Edit</a>
         {{if eq .User.Role "admin"}}
         <button type="button" class="btn btn-outline-danger btn-sm"

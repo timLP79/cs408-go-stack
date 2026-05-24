@@ -1,0 +1,72 @@
+{{define "content"}}
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <a href="/books/{{.Book.ID}}" class="text-decoration-none" style="color: #1e3a5f;">&larr; Back to {{.Book.Title}}</a>
+        <h1 class="mb-1 mt-2">Copies of {{.Book.Title}}</h1>
+        <p class="text-muted mb-0">
+            {{len .Copies}} {{if eq (len .Copies) 1}}copy{{else}}copies{{end}} in inventory
+            ({{.Book.AvailableCopies}} available)
+        </p>
+    </div>
+    <form method="POST" action="/books/{{.Book.ID}}/copies" class="m-0">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="btn btn-outline-success btn-sm"
+                title="Add one library-format copy (LSF barcode generated server-side)">
+            + Add Copy
+        </button>
+    </form>
+</div>
+
+{{if .Error}}<div class="alert alert-danger alert-dismissible fade show" role="alert">
+    {{.Error}}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>{{end}}
+
+{{if .Success}}<div class="alert alert-success alert-dismissible fade show" role="alert">
+    {{.Success}}{{with .SuccessDetail}} <strong>{{.}}</strong>{{end}}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>{{end}}
+
+<div class="card">
+    <div class="card-body">
+        {{if .Copies}}
+        <div class="table-responsive copies-table-wrapper">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Barcode</th>
+                        <th>Format</th>
+                        <th>Status</th>
+                        <th>Last Loan</th>
+                        <th></th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Copies}}
+                    <tr>
+                        <td><code>{{.Barcode}}</code></td>
+                        <td><span class="text-muted small">{{.BarcodeFormat}}</span></td>
+                        <td>{{template "copy_status_badge" .}}</td>
+                        <td>
+                            {{if .LastLoanAt.Valid}}
+                                <span class="small">{{.LastLoanAt.String}}</span>
+                                {{if .OnLoan}}<span class="badge bg-warning text-dark ms-1">on loan</span>{{end}}
+                            {{else}}
+                                <span class="text-muted small">never loaned</span>
+                            {{end}}
+                        </td>
+                        <td>{{if .NeedsRelabel}}<span class="badge bg-info text-dark">needs relabel</span>{{end}}</td>
+                        <td class="text-end">{{template "copy_actions_dropdown" (dict "Copy" . "CSRFToken" $.CSRFToken)}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <p class="text-muted mb-0">No copies in inventory yet. Click "Add Copy" to register one.</p>
+        {{end}}
+    </div>
+</div>
+{{end}}
+

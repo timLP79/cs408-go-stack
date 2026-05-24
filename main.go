@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"html/template"
 	"log"
 	"os"
@@ -70,11 +71,26 @@ func main() {
 			return ""
 		},
 		"add": func(a, b int) int { return a + b },
+		"dict": func(values ...interface{}) (map[string]interface{}, error) {
+			if len(values)%2 != 0 {
+				return nil, fmt.Errorf("dict requires an even number of arguments")
+			}
+			m := make(map[string]interface{}, len(values)/2)
+			for i := 0; i < len(values); i += 2 {
+				key, ok := values[i].(string)
+				if !ok {
+					return nil, fmt.Errorf("dict keys must be strings, got %T at position %d", values[i], i)
+				}
+				m[key] = values[i+1]
+			}
+			return m, nil
+		},
 	}
 
 	templates = make(map[string]*template.Template)
 	templateNames := []string{
 		"index", "catalog", "book_detail", "book_form",
+		"book_copies", "inventory",
 		"patrons", "admin", "staff", "staff_tools", "loans", "my_loans",
 		"reports_overdue", "overdue_notice",
 		"backup_admin", "admin_settings",
@@ -82,10 +98,14 @@ func main() {
 		"patron_login_credentials",
 	}
 	for _, name := range templateNames {
-		templates[name] = template.Must(template.New("layout").Funcs(funcMap).ParseFiles(
+		files := []string{
 			"templates/layout.html",
-			"templates/"+name+".html",
-		))
+			"templates/" + name + ".html",
+		}
+		if name == "book_copies" || name == "inventory" {
+			files = append(files, "templates/_copy_partials.html")
+		}
+		templates[name] = template.Must(template.New("layout").Funcs(funcMap).ParseFiles(files...))
 	}
 
 	kioskTemplateNames := []string{"kiosk", "kiosk_book_detail"}
@@ -177,6 +197,10 @@ func main() {
 	staff.POST("/books/:id/edit", HandleBookUpdate)
 	staff.POST("/books/:id/checkout", HandleCheckout)
 	staff.POST("/books/:id/copies", HandleAddCopy)
+	staff.GET("/books/:id/copies", HandleBookCopies)
+	staff.GET("/inventory", HandleInventory)
+	staff.POST("/copies/:id/status", HandleCopyStatus)
+	staff.POST("/copies/:id/delete", HandleCopyDelete)
 	staff.POST("/loans/:id/return", HandleReturn)
 	staff.GET("/loans", HandleLoansList)
 	staff.GET("/reports/overdue", HandleReportsOverdue)
