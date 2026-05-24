@@ -218,3 +218,15 @@ a.text-decoration-none:hover > .stat-card {
   transform: translateY(-2px);
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.10), 0 2px 4px rgba(0, 0, 0, 0.06);
 }
+
+/* Inventory / Manage Copies tables: opt out of .table-responsive's
+ * overflow clipping on screens >= md so the per-row Actions dropdown
+ * can extend below the row without being trapped inside the
+ * horizontally-scrollable wrapper. On narrow screens (< md), keep
+ * the horizontal-scroll behavior; the dropdown still works there,
+ * it just may need a vertical scroll inside the wrapper. */
+@media (min-width: 768px) {
+  .copies-table-wrapper {
+    overflow: visible;
+  }
+}
