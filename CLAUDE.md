@@ -192,9 +192,9 @@ CP1-CP7 closed; CS408 submission complete 2026-05-01. CP7 EC2 deploy retired pos
 Six-issue chain (see `docs/specs/2026-05-23-inventory-copies-design.md` for full design):
 
 - [x] `cs408-go-stack-e9a` (P1) -- Foundation. Shipped via PR #89 (merged 2026-05-23). Schema reshape (copies table, books.dewey, loans uses copy_id, no quantity columns), LSF barcode generator + tests, `AddLibraryCopy` / `GetCopyByBarcode` / `GetCopiesByBookID`, `HandleAddCopy` (POST /books/:id/copies), book-detail Check Out barcode prompt, `SeedBooks` gated behind `LIBRESHELF_SEED_DEV_BOOKS`. Security review clean.
+- [x] `cs408-go-stack-zbi` (P2) -- Manage Copies page + status editing. Shipped via PR #90 (merged 2026-05-24). `/books/:id/copies` + `/inventory` pages, POST status / delete endpoints, `GetCopyByID` / `UpdateCopyStatus` / `DeleteCopy` / `GetCopiesByBookIDWithLoanInfo` / `GetAllCopiesWithFilters`, Bootstrap dropdown per row, sidebar Inventory section, new `dict` template helper. Spec said /inventory admin-only; relaxed to staff (matches Add Copy / Edit Book pattern). Security review clean. `needs_relabel` UI is forward-compatible scaffolding for issue 4 (l9m) which owns the set/clear paths.
 - [ ] `cs408-go-stack-stb` (P2, ready) -- Multi-format copy entry (Code 39 / EAN-13 / UPC-A) + bulk add N copies.
-- [ ] `cs408-go-stack-zbi` (P2, ready) -- Manage Copies page + status editing (lost / damaged / withdrawn).
-- [ ] `cs408-go-stack-l9m` (P2, blocked on zbi) -- Print Labels + boombuler/barcode + 4 presets (sheet + roll) + calibration.
+- [ ] `cs408-go-stack-l9m` (P2, ready) -- Print Labels + boombuler/barcode + 4 presets (sheet + roll) + calibration.
 - [ ] `cs408-go-stack-8vi` (P3, ready) -- Dewey enrichment via OL chain.
 - [ ] `cs408-go-stack-1v5` (P2, blocked on stb) -- Rebuild rapid-scan portal on copies model (closes paused `cs408-go-stack-yu3`).
 
