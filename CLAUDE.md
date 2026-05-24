@@ -191,14 +191,14 @@ CP1-CP7 closed; CS408 submission complete 2026-05-01. CP7 EC2 deploy retired pos
 
 Six-issue chain (see `docs/specs/2026-05-23-inventory-copies-design.md` for full design):
 
-- [ ] `cs408-go-stack-e9a` (P1, in_progress on `feat/inventory-copies-foundation`) -- Foundation: schema reshape (copies table, books.dewey, loans uses copy_id, no quantity columns), LSF barcode generator, single-copy library-format add, book-detail Check Out barcode prompt.
-- [ ] `cs408-go-stack-stb` (P2, blocked) -- Multi-format copy entry (Code 39 / EAN-13 / UPC-A) + bulk add N copies.
-- [ ] `cs408-go-stack-zbi` (P2, blocked) -- Manage Copies page + status editing (lost / damaged / withdrawn).
-- [ ] `cs408-go-stack-l9m` (P2, blocked) -- Print Labels + boombuler/barcode + 4 presets (sheet + roll) + calibration.
-- [ ] `cs408-go-stack-8vi` (P3, blocked) -- Dewey enrichment via OL chain.
-- [ ] `cs408-go-stack-1v5` (P2, blocked) -- Rebuild rapid-scan portal on copies model (closes paused `cs408-go-stack-yu3`).
+- [x] `cs408-go-stack-e9a` (P1) -- Foundation. Shipped via PR #89 (merged 2026-05-23). Schema reshape (copies table, books.dewey, loans uses copy_id, no quantity columns), LSF barcode generator + tests, `AddLibraryCopy` / `GetCopyByBarcode` / `GetCopiesByBookID`, `HandleAddCopy` (POST /books/:id/copies), book-detail Check Out barcode prompt, `SeedBooks` gated behind `LIBRESHELF_SEED_DEV_BOOKS`. Security review clean.
+- [ ] `cs408-go-stack-stb` (P2, ready) -- Multi-format copy entry (Code 39 / EAN-13 / UPC-A) + bulk add N copies.
+- [ ] `cs408-go-stack-zbi` (P2, ready) -- Manage Copies page + status editing (lost / damaged / withdrawn).
+- [ ] `cs408-go-stack-l9m` (P2, blocked on zbi) -- Print Labels + boombuler/barcode + 4 presets (sheet + roll) + calibration.
+- [ ] `cs408-go-stack-8vi` (P3, ready) -- Dewey enrichment via OL chain.
+- [ ] `cs408-go-stack-1v5` (P2, blocked on stb) -- Rebuild rapid-scan portal on copies model (closes paused `cs408-go-stack-yu3`).
 
-One-time wipe required when the foundation lands: `rm data/database.sqlite*` on each dev machine before running the new code. No migration function ships because no live deployment exists. Future deployments will need a migration designed at that time (DEC-037).
+One-time wipe was required when the foundation landed: `rm data/database.sqlite*` on each dev machine. If your local DB still has the pre-DEC-037 schema (books with quantity columns, loans with book_id), wipe before running current code. No migration function ships because no live deployment exists.
 
 ### CP7 -- Admin Panel + Security Hardening + Deploy (closed 2026-05-01)
 
