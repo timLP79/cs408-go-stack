@@ -94,6 +94,7 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *DatabaseManager) {
 	templateNames := []string{
 		"index", "catalog", "book_detail", "book_form",
 		"book_copies", "inventory",
+		"checkout_portal", "checkin_portal",
 		"patrons", "admin", "staff", "staff_tools", "loans", "my_loans", "error",
 		"reports_overdue", "overdue_notice",
 		"backup_admin", "admin_settings",
@@ -178,6 +179,12 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *DatabaseManager) {
 	staff.GET("/inventory", HandleInventory)
 	staff.POST("/copies/:id/status", HandleCopyStatus)
 	staff.POST("/copies/:id/delete", HandleCopyDelete)
+	staff.GET("/checkout", HandleCheckoutPortal)
+	staff.POST("/checkout/scan", HandleCheckoutScan)
+	staff.POST("/checkout/undo", HandleCheckoutUndo)
+	staff.GET("/checkin", HandleCheckinPortal)
+	staff.POST("/checkin/scan", HandleCheckinScan)
+	staff.POST("/checkin/undo", HandleCheckinUndo)
 	staff.POST("/loans/:id/return", HandleReturn)
 	staff.GET("/loans", HandleLoansList)
 	staff.GET("/reports/overdue", HandleReportsOverdue)

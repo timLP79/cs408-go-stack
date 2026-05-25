@@ -1,0 +1,67 @@
+{{define "content"}}
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h1 class="mb-1">Check Out</h1>
+        <p class="text-muted mb-0">
+            Pick a patron once, then scan barcodes back-to-back. Each scan creates a 14-day loan.
+            Refresh the page to reset the session.
+        </p>
+    </div>
+</div>
+
+<div id="checkout-banner" class="alert d-none" role="alert"></div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="mb-3">
+            <label for="checkout-portal-patron" class="form-label">Patron</label>
+            <select id="checkout-portal-patron" class="form-select" autocomplete="off">
+                <option value="">Select a patron</option>
+                {{range .Patrons}}
+                <option value="{{.ID}}">{{.Name}}</option>
+                {{end}}
+            </select>
+        </div>
+
+        <div class="mb-1">
+            <label for="checkout-portal-barcode" class="form-label">Barcode</label>
+            <input id="checkout-portal-barcode" type="text" class="form-control form-control-lg"
+                   autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                   placeholder="Scan or type a barcode then press Enter"
+                   disabled>
+            <div class="form-text">Pick a patron first. Then scan each book in sequence.</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Session</strong>
+        <span class="text-muted small">
+            <span id="checkout-portal-count">0</span> checked out
+        </span>
+    </div>
+    <div class="card-body p-0">
+        <table class="table mb-0 align-middle">
+            <thead>
+                <tr>
+                    <th>Barcode</th>
+                    <th>Book</th>
+                    <th>Patron</th>
+                    <th>Due</th>
+                    <th class="text-end">Action</th>
+                </tr>
+            </thead>
+            <tbody id="checkout-portal-rows">
+                <tr id="checkout-portal-empty">
+                    <td colspan="5" class="text-muted text-center py-4">No scans yet.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<input type="hidden" id="checkout-portal-csrf" value="{{.CSRFToken}}">
+
+<script src="/javascripts/app.js"></script>
+{{end}}

@@ -5,7 +5,224 @@ document.addEventListener("DOMContentLoaded", function () {
     initBookDetail();
     initBookForm();
     initAddCopyModal();
+    initCheckoutPortal();
+    initCheckinPortal();
 });
+
+// ---------- Rapid-scan circulation portals (cs408-go-stack-1v5) ----------
+//
+// initCheckoutPortal and initCheckinPortal share a common pattern:
+//   1. Watch the barcode input for keydown Enter (no form submit; the
+//      scanner emits keys + Enter, just like a keyboard).
+//   2. On Enter, POST {patron_id?, barcode} to the scan endpoint and
+//      parse the JSON response.
+//   3. On success: prepend a row to the session table with an Undo
+//      button, increment the counter, show a success banner briefly.
+//   4. On failure: show the error_message in the banner with a red
+//      tint; leave the input ready for the next scan.
+//   5. Undo buttons POST {loan_id} to the undo endpoint and remove
+//      the row from the table on success.
+//
+// Session state lives entirely in the DOM. Refreshing the page resets
+// it. The server is stateless across scans. All cell content is set
+// via textContent rather than innerHTML so the server-supplied strings
+// cannot smuggle markup.
+
+function makeCell(text) {
+    var td = document.createElement("td");
+    td.textContent = text;
+    return td;
+}
+
+function makeCodeCell(text) {
+    var td = document.createElement("td");
+    var code = document.createElement("code");
+    code.textContent = text;
+    td.appendChild(code);
+    return td;
+}
+
+function makeUndoCell(onClick) {
+    var td = document.createElement("td");
+    td.className = "text-end";
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm btn-outline-secondary";
+    btn.textContent = "Undo";
+    btn.addEventListener("click", onClick);
+    td.appendChild(btn);
+    return td;
+}
+
+function initCheckoutPortal() {
+    var barcodeInput = document.getElementById("checkout-portal-barcode");
+    if (!barcodeInput) return;
+    var patronSelect = document.getElementById("checkout-portal-patron");
+    var rows = document.getElementById("checkout-portal-rows");
+    var emptyRow = document.getElementById("checkout-portal-empty");
+    var countLabel = document.getElementById("checkout-portal-count");
+    var banner = document.getElementById("checkout-banner");
+    var csrf = document.getElementById("checkout-portal-csrf").value;
+
+    function enableBarcodeIfReady() {
+        var hasPatron = patronSelect.value !== "";
+        barcodeInput.disabled = !hasPatron;
+        if (hasPatron) barcodeInput.focus();
+    }
+    patronSelect.addEventListener("change", enableBarcodeIfReady);
+
+    barcodeInput.addEventListener("keydown", function (ev) {
+        if (ev.key !== "Enter") return;
+        ev.preventDefault();
+        var barcode = barcodeInput.value.trim();
+        if (!barcode) return;
+        submitCheckoutScan(barcode);
+    });
+
+    function submitCheckoutScan(barcode) {
+        var form = new FormData();
+        form.set("csrf_token", csrf);
+        form.set("patron_id", patronSelect.value);
+        form.set("barcode", barcode);
+        fetch("/checkout/scan", { method: "POST", body: form })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    prependCheckoutRow(data);
+                    showBanner(banner, "success", "Checked out: " + data.book_title);
+                } else {
+                    showBanner(banner, "danger", data.error_message || "Scan failed.");
+                }
+                barcodeInput.value = "";
+                barcodeInput.focus();
+            })
+            .catch(function () {
+                showBanner(banner, "danger", "Network error. Try again.");
+                barcodeInput.focus();
+            });
+    }
+
+    function prependCheckoutRow(data) {
+        if (emptyRow) emptyRow.remove();
+        var tr = document.createElement("tr");
+        tr.dataset.loanId = String(data.loan_id);
+        tr.appendChild(makeCodeCell(data.barcode));
+        tr.appendChild(makeCell(data.book_title));
+        tr.appendChild(makeCell(data.patron_name));
+        tr.appendChild(makeCell(data.due_date));
+        tr.appendChild(makeUndoCell(function () { undoCheckoutRow(tr); }));
+        rows.insertBefore(tr, rows.firstChild);
+        countLabel.textContent = String(parseInt(countLabel.textContent, 10) + 1);
+    }
+
+    function undoCheckoutRow(tr) {
+        var form = new FormData();
+        form.set("csrf_token", csrf);
+        form.set("loan_id", tr.dataset.loanId);
+        fetch("/checkout/undo", { method: "POST", body: form })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    tr.remove();
+                    countLabel.textContent = String(parseInt(countLabel.textContent, 10) - 1);
+                    showBanner(banner, "success", "Undid checkout.");
+                } else {
+                    showBanner(banner, "danger", data.error_message || "Undo failed.");
+                }
+            })
+            .catch(function () {
+                showBanner(banner, "danger", "Network error during undo.");
+            });
+    }
+
+    enableBarcodeIfReady();
+}
+
+function initCheckinPortal() {
+    var barcodeInput = document.getElementById("checkin-portal-barcode");
+    if (!barcodeInput) return;
+    var rows = document.getElementById("checkin-portal-rows");
+    var emptyRow = document.getElementById("checkin-portal-empty");
+    var countLabel = document.getElementById("checkin-portal-count");
+    var banner = document.getElementById("checkin-banner");
+    var csrf = document.getElementById("checkin-portal-csrf").value;
+
+    barcodeInput.addEventListener("keydown", function (ev) {
+        if (ev.key !== "Enter") return;
+        ev.preventDefault();
+        var barcode = barcodeInput.value.trim();
+        if (!barcode) return;
+        submitCheckinScan(barcode);
+    });
+
+    function submitCheckinScan(barcode) {
+        var form = new FormData();
+        form.set("csrf_token", csrf);
+        form.set("barcode", barcode);
+        fetch("/checkin/scan", { method: "POST", body: form })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    prependCheckinRow(data);
+                    showBanner(banner, "success", "Returned: " + data.book_title);
+                } else {
+                    showBanner(banner, "danger", data.error_message || "Scan failed.");
+                }
+                barcodeInput.value = "";
+                barcodeInput.focus();
+            })
+            .catch(function () {
+                showBanner(banner, "danger", "Network error. Try again.");
+                barcodeInput.focus();
+            });
+    }
+
+    function prependCheckinRow(data) {
+        if (emptyRow) emptyRow.remove();
+        var tr = document.createElement("tr");
+        tr.dataset.loanId = String(data.loan_id);
+        tr.appendChild(makeCodeCell(data.barcode));
+        tr.appendChild(makeCell(data.book_title));
+        tr.appendChild(makeCell(data.patron_name));
+        tr.appendChild(makeUndoCell(function () { undoCheckinRow(tr); }));
+        rows.insertBefore(tr, rows.firstChild);
+        countLabel.textContent = String(parseInt(countLabel.textContent, 10) + 1);
+    }
+
+    function undoCheckinRow(tr) {
+        var form = new FormData();
+        form.set("csrf_token", csrf);
+        form.set("loan_id", tr.dataset.loanId);
+        fetch("/checkin/undo", { method: "POST", body: form })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    tr.remove();
+                    countLabel.textContent = String(parseInt(countLabel.textContent, 10) - 1);
+                    showBanner(banner, "success", "Undid return.");
+                } else {
+                    showBanner(banner, "danger", data.error_message || "Undo failed.");
+                }
+            })
+            .catch(function () {
+                showBanner(banner, "danger", "Network error during undo.");
+            });
+    }
+
+    barcodeInput.focus();
+}
+
+// showBanner sets the .alert element's content + tint and reveals it.
+// Each call replaces the prior banner content -- no stacking. variant
+// is "success" or "danger"; anything else falls back to "secondary".
+function showBanner(el, variant, msg) {
+    if (!el) return;
+    var cls = "alert-secondary";
+    if (variant === "success") cls = "alert-success";
+    else if (variant === "danger") cls = "alert-danger";
+    el.className = "alert " + cls;
+    el.textContent = msg;
+}
 
 // initAddCopyModal wires the source-radio toggle inside the Add Copy
 // modal on the Manage Copies page. The library section (bulk count

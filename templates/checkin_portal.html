@@ -1,0 +1,53 @@
+{{define "content"}}
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h1 class="mb-1">Check In</h1>
+        <p class="text-muted mb-0">
+            Scan returned books back-to-back. The system looks up each loan from the barcode
+            and marks it returned. Refresh the page to clear the session.
+        </p>
+    </div>
+</div>
+
+<div id="checkin-banner" class="alert d-none" role="alert"></div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <label for="checkin-portal-barcode" class="form-label">Barcode</label>
+        <input id="checkin-portal-barcode" type="text" class="form-control form-control-lg"
+               autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+               placeholder="Scan or type a barcode then press Enter">
+        <div class="form-text">Scan each book as you receive it.</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Session</strong>
+        <span class="text-muted small">
+            <span id="checkin-portal-count">0</span> returned
+        </span>
+    </div>
+    <div class="card-body p-0">
+        <table class="table mb-0 align-middle">
+            <thead>
+                <tr>
+                    <th>Barcode</th>
+                    <th>Book</th>
+                    <th>Patron</th>
+                    <th class="text-end">Action</th>
+                </tr>
+            </thead>
+            <tbody id="checkin-portal-rows">
+                <tr id="checkin-portal-empty">
+                    <td colspan="4" class="text-muted text-center py-4">No scans yet.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<input type="hidden" id="checkin-portal-csrf" value="{{.CSRFToken}}">
+
+<script src="/javascripts/app.js"></script>
+{{end}}
