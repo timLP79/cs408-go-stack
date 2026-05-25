@@ -1428,3 +1428,388 @@ func TestAddCopyNonStaffForbidden(t *testing.T) {
 		t.Errorf("patron should not have been able to add copies; got %d", len(copies))
 	}
 }
+
+// ---------- HandleAddCopy: multi-format + bulk (cs408-go-stack-stb) ----------
+
+// TestAddCopyLibraryBulkHappy pins source=library count=5: five copies
+// created with monotonic distinct LSF barcodes, flash copy_added_bulk.
+func TestAddCopyLibraryBulkHappy(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "admin", "admin")
+	bookID := mustCreateBook(t, dm, "Bulk Subject", 0)
+
+	rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/copies", bookID), sess, csrf, map[string]string{
+		"source": "library",
+		"count":  "5",
+	})
+
+	if rr.Code != http.StatusFound {
+		t.Fatalf("expected 302, got %d. body: %s", rr.Code, rr.Body.String())
+	}
+	if got := flashCode(rr, "flash_success"); got != "copy_added_bulk" {
+		t.Errorf("expected flash_success=copy_added_bulk, got %q", got)
+	}
+
+	copies, err := dm.GetCopiesByBookID(bookID)
+	if err != nil {
+		t.Fatalf("GetCopiesByBookID: %v", err)
+	}
+	if len(copies) != 5 {
+		t.Fatalf("expected 5 copies, got %d", len(copies))
+	}
+	seen := make(map[string]bool, 5)
+	for _, c := range copies {
+		if !strings.HasPrefix(c.Barcode, "LSF") || len(c.Barcode) != 11 {
+			t.Errorf("expected LSF barcode, got %q", c.Barcode)
+		}
+		if seen[c.Barcode] {
+			t.Errorf("duplicate barcode in bulk allocation: %q", c.Barcode)
+		}
+		seen[c.Barcode] = true
+		if c.BarcodeFormat != "code128" {
+			t.Errorf("BarcodeFormat = %q, want code128", c.BarcodeFormat)
+		}
+	}
+}
+
+// TestAddCopyLibraryCountInvalid pins the validation guard: count="abc"
+// flashes copy_count_invalid and creates no copies.
+func TestAddCopyLibraryCountInvalid(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "admin", "admin")
+	bookID := mustCreateBook(t, dm, "Bad Count Subject", 0)
+
+	rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/copies", bookID), sess, csrf, map[string]string{
+		"source": "library",
+		"count":  "abc",
+	})
+
+	if rr.Code != http.StatusFound {
+		t.Fatalf("expected 302, got %d", rr.Code)
+	}
+	if got := flashCode(rr, "flash_error"); got != "copy_count_invalid" {
+		t.Errorf("expected flash_error=copy_count_invalid, got %q", got)
+	}
+	copies, _ := dm.GetCopiesByBookID(bookID)
+	if len(copies) != 0 {
+		t.Errorf("expected 0 copies after invalid count, got %d", len(copies))
+	}
+}
+
+// TestAddCopyLibraryCountTooLarge pins count > MaxBulkCopiesPerRequest
+// is rejected with copy_count_too_large flash.
+func TestAddCopyLibraryCountTooLarge(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "admin", "admin")
+	bookID := mustCreateBook(t, dm, "Cap Subject", 0)
+
+	rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/copies", bookID), sess, csrf, map[string]string{
+		"source": "library",
+		"count":  "51",
+	})
+
+	if rr.Code != http.StatusFound {
+		t.Fatalf("expected 302, got %d", rr.Code)
+	}
+	if got := flashCode(rr, "flash_error"); got != "copy_count_too_large" {
+		t.Errorf("expected flash_error=copy_count_too_large, got %q", got)
+	}
+	copies, _ := dm.GetCopiesByBookID(bookID)
+	if len(copies) != 0 {
+		t.Errorf("expected 0 copies after over-cap count, got %d", len(copies))
+	}
+}
+
+// TestAddCopyScanEAN13Happy pins source=scan format=ean13 with a valid
+// EAN-13: copy created with the supplied barcode + format, flash
+// copy_added with the barcode as detail.
+func TestAddCopyScanEAN13Happy(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "admin", "admin")
+	bookID := mustCreateBook(t, dm, "EAN13 Subject", 0)
+
+	rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/copies", bookID), sess, csrf, map[string]string{
+		"source":  "scan",
+		"format":  "ean13",
+		"barcode": "9780141439518", // real Pride and Prejudice ISBN
+	})
+
+	if rr.Code != http.StatusFound {
+		t.Fatalf("expected 302, got %d. body: %s", rr.Code, rr.Body.String())
+	}
+	if got := flashCode(rr, "flash_success"); got != "copy_added" {
+		t.Errorf("expected flash_success=copy_added, got %q", got)
+	}
+	if got := flashCode(rr, "flash_detail"); got != "9780141439518" {
+		t.Errorf("expected flash_detail=9780141439518, got %q", got)
+	}
+
+	copies, _ := dm.GetCopiesByBookID(bookID)
+	if len(copies) != 1 {
+		t.Fatalf("expected 1 copy, got %d", len(copies))
+	}
+	if copies[0].Barcode != "9780141439518" {
+		t.Errorf("Barcode = %q, want 9780141439518", copies[0].Barcode)
+	}
+	if copies[0].BarcodeFormat != "ean13" {
+		t.Errorf("BarcodeFormat = %q, want ean13", copies[0].BarcodeFormat)
+	}
+}
+
+// TestAddCopyScanEAN13BadCheck pins that an EAN-13 with a wrong check
+// digit fails with barcode_value_invalid and creates no copy.
+func TestAddCopyScanEAN13BadCheck(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "admin", "admin")
+	bookID := mustCreateBook(t, dm, "Bad Check Subject", 0)
+
+	rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/copies", bookID), sess, csrf, map[string]string{
+		"source":  "scan",
+		"format":  "ean13",
+		"barcode": "9780141439516", // valid format, wrong check digit
+	})
+
+	if rr.Code != http.StatusFound {
+		t.Fatalf("expected 302, got %d", rr.Code)
+	}
+	if got := flashCode(rr, "flash_error"); got != "barcode_value_invalid" {
+		t.Errorf("expected flash_error=barcode_value_invalid, got %q", got)
+	}
+	copies, _ := dm.GetCopiesByBookID(bookID)
+	if len(copies) != 0 {
+		t.Errorf("expected 0 copies, got %d", len(copies))
+	}
+}
+
+// TestAddCopyScanFormatInvalid pins that an unknown format value is
+// rejected with barcode_format_invalid.
+func TestAddCopyScanFormatInvalid(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "admin", "admin")
+	bookID := mustCreateBook(t, dm, "Unknown Format Subject", 0)
+
+	rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/copies", bookID), sess, csrf, map[string]string{
+		"source":  "scan",
+		"format":  "qrcode", // not one of the four
+		"barcode": "anything",
+	})
+
+	if rr.Code != http.StatusFound {
+		t.Fatalf("expected 302, got %d", rr.Code)
+	}
+	if got := flashCode(rr, "flash_error"); got != "barcode_format_invalid" {
+		t.Errorf("expected flash_error=barcode_format_invalid, got %q", got)
+	}
+}
+
+// TestAddCopyScanDuplicateBarcode pins that adding the same barcode
+// twice fails on the second attempt with barcode_already_exists.
+func TestAddCopyScanDuplicateBarcode(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "admin", "admin")
+	bookID := mustCreateBook(t, dm, "Dupe Subject", 0)
+
+	// First add succeeds.
+	fields := map[string]string{
+		"source":  "scan",
+		"format":  "ean13",
+		"barcode": "9780141439518",
+	}
+	rr1 := postStaffForm(t, router, fmt.Sprintf("/books/%d/copies", bookID), sess, csrf, fields)
+	if got := flashCode(rr1, "flash_success"); got != "copy_added" {
+		t.Fatalf("first add should succeed; flash_success=%q", got)
+	}
+
+	// Second add of the same barcode (same book or another) fails.
+	rr2 := postStaffForm(t, router, fmt.Sprintf("/books/%d/copies", bookID), sess, csrf, fields)
+	if got := flashCode(rr2, "flash_error"); got != "barcode_already_exists" {
+		t.Errorf("expected flash_error=barcode_already_exists on second add, got %q", got)
+	}
+	copies, _ := dm.GetCopiesByBookID(bookID)
+	if len(copies) != 1 {
+		t.Errorf("expected 1 copy after dupe attempt, got %d", len(copies))
+	}
+}
+
+// TestAddCopyScanEmptyBarcode pins that an empty barcode value is
+// rejected before the format dispatcher runs, with the "required"
+// slug (not the "value-invalid" slug, which is for actual format /
+// check-digit mismatches).
+func TestAddCopyScanEmptyBarcode(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "admin", "admin")
+	bookID := mustCreateBook(t, dm, "Empty Scan Subject", 0)
+
+	rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/copies", bookID), sess, csrf, map[string]string{
+		"source":  "scan",
+		"format":  "ean13",
+		"barcode": "   ",
+	})
+
+	if got := flashCode(rr, "flash_error"); got != "barcode_value_required" {
+		t.Errorf("expected flash_error=barcode_value_required for empty barcode, got %q", got)
+	}
+}
+
+// TestAddCopyScanUPCAHappy + Code128 + Code39 round-trip each of the
+// remaining formats end-to-end.
+func TestAddCopyScanUPCAHappy(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "admin", "admin")
+	bookID := mustCreateBook(t, dm, "UPC-A Subject", 0)
+
+	rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/copies", bookID), sess, csrf, map[string]string{
+		"source":  "scan",
+		"format":  "upca",
+		"barcode": "036000291452",
+	})
+	if got := flashCode(rr, "flash_success"); got != "copy_added" {
+		t.Fatalf("expected flash_success=copy_added, got %q", got)
+	}
+	copies, _ := dm.GetCopiesByBookID(bookID)
+	if len(copies) != 1 || copies[0].BarcodeFormat != "upca" {
+		t.Errorf("UPC-A round trip failed: %+v", copies)
+	}
+}
+
+func TestAddCopyScanCode128Happy(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "admin", "admin")
+	bookID := mustCreateBook(t, dm, "Code128 Subject", 0)
+
+	rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/copies", bookID), sess, csrf, map[string]string{
+		"source":  "scan",
+		"format":  "code128",
+		"barcode": "LIBRARY-A-001",
+	})
+	if got := flashCode(rr, "flash_success"); got != "copy_added" {
+		t.Fatalf("expected flash_success=copy_added, got %q", got)
+	}
+}
+
+func TestAddCopyScanCode39Happy(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "admin", "admin")
+	bookID := mustCreateBook(t, dm, "Code39 Subject", 0)
+
+	rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/copies", bookID), sess, csrf, map[string]string{
+		"source":  "scan",
+		"format":  "code39",
+		"barcode": "BOOK-001",
+	})
+	if got := flashCode(rr, "flash_success"); got != "copy_added" {
+		t.Fatalf("expected flash_success=copy_added, got %q", got)
+	}
+}
+
+// TestAddCopySourceMissingDefaultsLibrary pins back-compat: a form
+// with no "source" field at all still defaults to source=library
+// count=1 -- this is what the book-detail quick-add form posts and
+// what the foundation TestAddCopyHappyPath continues to exercise.
+func TestAddCopySourceMissingDefaultsLibrary(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "admin", "admin")
+	bookID := mustCreateBook(t, dm, "Quick Add Subject", 0)
+
+	rr := postStaffForm(t, router, fmt.Sprintf("/books/%d/copies", bookID), sess, csrf, nil)
+
+	if got := flashCode(rr, "flash_success"); got != "copy_added" {
+		t.Fatalf("expected flash_success=copy_added (default library), got %q", got)
+	}
+	copies, _ := dm.GetCopiesByBookID(bookID)
+	if len(copies) != 1 {
+		t.Errorf("expected exactly 1 copy from default library add, got %d", len(copies))
+	}
+}
+
+// ---------- DB methods: AddLibraryCopies + CreateCopyWithBarcode ----------
+
+// TestAddLibraryCopiesMonotonic pins that a single AddLibraryCopies
+// call yields a contiguous range of LSF sequences.
+func TestAddLibraryCopiesMonotonic(t *testing.T) {
+	dm := setupTestDB(t)
+	bookID := mustCreateBook(t, dm, "Seq Subject", 0)
+
+	created, err := dm.AddLibraryCopies(bookID, 5)
+	if err != nil {
+		t.Fatalf("AddLibraryCopies: %v", err)
+	}
+	if len(created) != 5 {
+		t.Fatalf("expected 5 created, got %d", len(created))
+	}
+	// All LSF, all distinct, monotonic on the 7-digit sequence portion.
+	prev := -1
+	for _, cp := range created {
+		if !strings.HasPrefix(cp.Barcode, "LSF") || len(cp.Barcode) != 11 {
+			t.Errorf("non-LSF barcode in bulk: %q", cp.Barcode)
+		}
+		seq := 0
+		fmt.Sscanf(cp.Barcode[3:10], "%d", &seq)
+		if seq <= prev {
+			t.Errorf("non-monotonic sequence: %d after %d", seq, prev)
+		}
+		prev = seq
+	}
+}
+
+// TestAddLibraryCopiesCapped pins the per-request cap guard.
+func TestAddLibraryCopiesCapped(t *testing.T) {
+	dm := setupTestDB(t)
+	bookID := mustCreateBook(t, dm, "Cap DB Subject", 0)
+
+	if _, err := dm.AddLibraryCopies(bookID, MaxBulkCopiesPerRequest+1); err == nil {
+		t.Errorf("expected error for count > MaxBulkCopiesPerRequest, got nil")
+	}
+	if _, err := dm.AddLibraryCopies(bookID, 0); err == nil {
+		t.Errorf("expected error for count=0, got nil")
+	}
+}
+
+// TestCreateCopyWithBarcodeHappy verifies the DB method end-to-end
+// outside the handler: validation + insert + readback.
+func TestCreateCopyWithBarcodeHappy(t *testing.T) {
+	dm := setupTestDB(t)
+	bookID := mustCreateBook(t, dm, "Direct DB Subject", 0)
+
+	id, err := dm.CreateCopyWithBarcode(bookID, "9780062316097", "ean13")
+	if err != nil {
+		t.Fatalf("CreateCopyWithBarcode: %v", err)
+	}
+	cp, err := dm.GetCopyByID(id)
+	if err != nil {
+		t.Fatalf("GetCopyByID: %v", err)
+	}
+	if cp.Barcode != "9780062316097" || cp.BarcodeFormat != "ean13" {
+		t.Errorf("readback = %+v, want barcode 9780062316097 format ean13", cp)
+	}
+}
+
+// TestCreateCopyWithBarcodeDuplicate pins the UNIQUE-violation -> sentinel mapping.
+func TestCreateCopyWithBarcodeDuplicate(t *testing.T) {
+	dm := setupTestDB(t)
+	bookA := mustCreateBook(t, dm, "Book A", 0)
+	bookB := mustCreateBook(t, dm, "Book B", 0)
+
+	if _, err := dm.CreateCopyWithBarcode(bookA, "9780141439518", "ean13"); err != nil {
+		t.Fatalf("first insert: %v", err)
+	}
+	if _, err := dm.CreateCopyWithBarcode(bookB, "9780141439518", "ean13"); err != ErrBarcodeAlreadyExists {
+		t.Errorf("second insert: expected ErrBarcodeAlreadyExists, got %v", err)
+	}
+}
+
+// TestCreateCopyWithBarcodeInvalidFormat verifies the front-loaded
+// validation: an unknown format returns ErrBarcodeFormatInvalid
+// without touching the DB.
+func TestCreateCopyWithBarcodeInvalidFormat(t *testing.T) {
+	dm := setupTestDB(t)
+	bookID := mustCreateBook(t, dm, "Invalid Fmt Subject", 0)
+
+	if _, err := dm.CreateCopyWithBarcode(bookID, "anything", "morse"); err != ErrBarcodeFormatInvalid {
+		t.Errorf("expected ErrBarcodeFormatInvalid, got %v", err)
+	}
+	copies, _ := dm.GetCopiesByBookID(bookID)
+	if len(copies) != 0 {
+		t.Errorf("no copy should have been inserted; got %d", len(copies))
+	}
+}

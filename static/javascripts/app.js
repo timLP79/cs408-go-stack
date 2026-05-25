@@ -4,7 +4,47 @@ document.addEventListener("DOMContentLoaded", function () {
     initPatronManagement();
     initBookDetail();
     initBookForm();
+    initAddCopyModal();
 });
+
+// initAddCopyModal wires the source-radio toggle inside the Add Copy
+// modal on the Manage Copies page. The library section (bulk count
+// input) and scan section (format + barcode inputs) are mutually
+// exclusive based on the selected source radio. Inputs in the hidden
+// section are also "disabled" so their values are not submitted with
+// the form, preventing the server from seeing leftover state from the
+// other branch.
+function initAddCopyModal() {
+    var modal = document.getElementById("addCopyModal");
+    if (!modal) return;
+
+    var librarySection = modal.querySelector(".add-copy-source-library");
+    var scanSection = modal.querySelector(".add-copy-source-scan");
+    var radios = modal.querySelectorAll('input[name="source"]');
+    if (!librarySection || !scanSection || radios.length === 0) return;
+
+    function applySource(value) {
+        var isLibrary = value === "library";
+        librarySection.classList.toggle("d-none", !isLibrary);
+        scanSection.classList.toggle("d-none", isLibrary);
+        librarySection.querySelectorAll("input, select").forEach(function (el) {
+            el.disabled = !isLibrary;
+        });
+        scanSection.querySelectorAll("input, select").forEach(function (el) {
+            el.disabled = isLibrary;
+        });
+    }
+
+    radios.forEach(function (radio) {
+        radio.addEventListener("change", function () {
+            if (radio.checked) applySource(radio.value);
+        });
+    });
+
+    // Initial state matches whichever radio is checked in the markup.
+    var initial = modal.querySelector('input[name="source"]:checked');
+    applySource(initial ? initial.value : "library");
+}
 
 function initCatalogFilter() {
     var searchInput = document.getElementById("catalog-search");

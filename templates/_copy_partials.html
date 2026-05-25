@@ -46,3 +46,69 @@
     <button type="submit" class="dropdown-item">{{.Label}}</button>
 </form>
 {{end}}
+
+{{define "add_copy_modal"}}
+<div class="modal fade" id="addCopyModal" tabindex="-1" aria-labelledby="addCopyModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <form method="POST" action="/books/{{.BookID}}/copies" class="modal-content" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+            <div class="modal-header">
+                <h5 class="modal-title" id="addCopyModalLabel">Add Copy</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <fieldset class="mb-3">
+                    <legend class="form-label">Source</legend>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="source" id="add-copy-source-library" value="library" checked>
+                        <label class="form-check-label" for="add-copy-source-library">
+                            <strong>Generate library label</strong>
+                            <div class="form-text">Allocates the next LSF barcode (Code 128) and stores the copy. You'll print a label for it later.</div>
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="source" id="add-copy-source-scan" value="scan">
+                        <label class="form-check-label" for="add-copy-source-scan">
+                            <strong>Scan existing barcode</strong>
+                            <div class="form-text">Use the publisher's printed barcode (EAN-13 / UPC-A) or an existing Code 128 / Code 39 label. The system validates length and check digit.</div>
+                        </label>
+                    </div>
+                </fieldset>
+
+                <div class="add-copy-source-library">
+                    <label for="add-copy-count" class="form-label">Number of copies to add</label>
+                    <input type="number" class="form-control" id="add-copy-count" name="count"
+                           value="1" min="1" max="50">
+                    <div class="form-text">1-50 in a single submission. Each gets its own LSF barcode.</div>
+                </div>
+
+                <div class="add-copy-source-scan d-none">
+                    <div class="mb-3">
+                        <label for="add-copy-format" class="form-label">Barcode format</label>
+                        <select class="form-select" id="add-copy-format" name="format">
+                            <option value="ean13">EAN-13 (most modern books, 13 digits)</option>
+                            <option value="upca">UPC-A (US retail, 12 digits)</option>
+                            <option value="code128">Code 128 (alphanumeric, printable ASCII)</option>
+                            <option value="code39">Code 39 (legacy alphanumeric)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="add-copy-barcode" class="form-label">Barcode value</label>
+                        <input type="text" class="form-control" id="add-copy-barcode" name="barcode"
+                               autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                               placeholder="Scan or type the barcode on the book">
+                        <div class="form-text">EAN-13 / UPC-A require all digits plus a valid check digit.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn" style="background-color: #1e3a5f; color: #ffffff;">Add</button>
+            </div>
+        </form>
+    </div>
+</div>
+{{end}}

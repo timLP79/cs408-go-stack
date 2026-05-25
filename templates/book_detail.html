@@ -3,14 +3,7 @@
     <a href="/catalog" class="text-decoration-none" style="color: #1e3a5f;">&larr; Back to Catalog</a>
     {{if and .User (or (eq .User.Role "admin") (eq .User.Role "staff"))}}
     <div class="d-flex gap-2 align-items-center">
-        <form method="POST" action="/books/{{.Book.ID}}/copies" class="m-0">
-            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-            <button type="submit" class="btn btn-outline-success btn-sm"
-                    title="Add one library-format copy (LSF barcode generated server-side)">
-                + Add Copy
-            </button>
-        </form>
-        <a href="/books/{{.Book.ID}}/copies" class="btn btn-outline-secondary btn-sm">Manage Copies</a>
+        <a href="/books/{{.Book.ID}}/copies" class="btn btn-outline-success btn-sm">Manage Copies</a>
         <a href="/books/{{.Book.ID}}/edit" class="btn btn-outline-primary btn-sm">Edit</a>
         {{if eq .User.Role "admin"}}
         <button type="button" class="btn btn-outline-danger btn-sm"
