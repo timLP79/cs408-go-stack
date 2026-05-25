@@ -1632,7 +1632,9 @@ func TestAddCopyScanDuplicateBarcode(t *testing.T) {
 }
 
 // TestAddCopyScanEmptyBarcode pins that an empty barcode value is
-// rejected before the format dispatcher runs.
+// rejected before the format dispatcher runs, with the "required"
+// slug (not the "value-invalid" slug, which is for actual format /
+// check-digit mismatches).
 func TestAddCopyScanEmptyBarcode(t *testing.T) {
 	router, dm := setupTestRouter(t)
 	sess, csrf := loginAs(t, dm, "admin", "admin")
@@ -1644,8 +1646,8 @@ func TestAddCopyScanEmptyBarcode(t *testing.T) {
 		"barcode": "   ",
 	})
 
-	if got := flashCode(rr, "flash_error"); got != "barcode_value_invalid" {
-		t.Errorf("expected flash_error=barcode_value_invalid for empty barcode, got %q", got)
+	if got := flashCode(rr, "flash_error"); got != "barcode_value_required" {
+		t.Errorf("expected flash_error=barcode_value_required for empty barcode, got %q", got)
 	}
 }
 

@@ -701,7 +701,7 @@ func HandleAddCopy(c *gin.Context) {
 		format := strings.TrimSpace(c.PostForm("format"))
 		barcode := strings.TrimSpace(c.PostForm("barcode"))
 		if barcode == "" {
-			setFlash(c, flashKindError, "barcode_value_invalid")
+			setFlash(c, flashKindError, "barcode_value_required")
 			c.Redirect(http.StatusFound, dest)
 			return
 		}

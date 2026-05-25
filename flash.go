@@ -66,6 +66,7 @@ var flashMessages = map[string]string{
 	"copy_count_too_large":               "Copy count exceeds the per-request cap (50).",
 	"copy_source_invalid":                "Unrecognized add-copy source. Use 'library' or 'scan'.",
 	"barcode_format_invalid":             "Barcode format must be one of: Code 128, Code 39, EAN-13, UPC-A.",
+	"barcode_value_required":             "Please scan or type a barcode before adding.",
 	"barcode_value_invalid":              "Barcode value does not match the chosen format (check digit or character set).",
 	"barcode_already_exists":             "A copy with that barcode already exists.",
 	"copy_status_updated":                "Copy status updated:",
