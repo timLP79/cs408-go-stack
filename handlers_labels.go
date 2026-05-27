@@ -89,9 +89,14 @@ func HandlePrintLabelsRender(c *gin.Context) {
 		return
 	}
 
-	ids, err := resolveLabelSource(c, dm)
+	ids, flashSlug, err := resolveLabelSource(c, dm)
 	if err != nil {
-		setFlash(c, flashKindError, err.Error())
+		log.Printf("HandlePrintLabelsRender: resolveLabelSource: %v", err)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	if flashSlug != "" {
+		setFlash(c, flashKindError, flashSlug)
 		c.Redirect(http.StatusFound, "/inventory/print-labels")
 		return
 	}
@@ -118,7 +123,13 @@ func HandlePrintLabelsRender(c *gin.Context) {
 			continue
 		}
 		labels = append(labels, LabelDisplay{
-			LabelData:    ld,
+			LabelData: ld,
+			// svgFromBarcode constructs the SVG entirely from numeric
+			// coordinates and fixed markup -- no user-controlled
+			// strings (barcode value, book title, etc.) are
+			// interpolated into the SVG body. The template.HTML cast
+			// is intentional and safe; future maintainers must
+			// preserve that invariant if svgFromBarcode is changed.
 			SVG:          template.HTML(svg),
 			AuthorPrefix: authorPrefix3(ld.Authors),
 		})
@@ -273,56 +284,54 @@ func HandleLabelCalibration(c *gin.Context) {
 }
 
 // resolveLabelSource translates the source query parameters into a
-// concrete list of copy ids. Returns a flash-code error string so the
-// caller can redirect with setFlash without log noise on input errors.
-func resolveLabelSource(c *gin.Context, dm *DatabaseManager) ([]int, error) {
+// concrete list of copy ids. The triple return separates input errors
+// (flashSlug non-empty, err nil -> caller flashes + redirects) from DB
+// faults (err non-empty -> caller logs + returns 500), so DB errors are
+// never silently mapped to a user-visible flash slug.
+func resolveLabelSource(c *gin.Context, dm *DatabaseManager) (ids []int, flashSlug string, err error) {
 	source := strings.TrimSpace(c.Query("source"))
 	switch source {
 	case labelSourceAll, "":
-		copies, err := dm.GetAllCopiesWithFilters("", false)
-		if err != nil {
-			log.Printf("resolveLabelSource(all): %v", err)
-			return nil, errors.New("internal_error")
+		copies, dbErr := dm.GetAllCopiesWithFilters("", false)
+		if dbErr != nil {
+			return nil, "", fmt.Errorf("GetAllCopiesWithFilters(all): %w", dbErr)
 		}
-		return copyIDsFromDetail(copies), nil
+		return copyIDsFromDetail(copies), "", nil
 	case labelSourceNeedsRelabel:
-		copies, err := dm.GetAllCopiesWithFilters("", true)
-		if err != nil {
-			log.Printf("resolveLabelSource(needs_relabel): %v", err)
-			return nil, errors.New("internal_error")
+		copies, dbErr := dm.GetAllCopiesWithFilters("", true)
+		if dbErr != nil {
+			return nil, "", fmt.Errorf("GetAllCopiesWithFilters(needs_relabel): %w", dbErr)
 		}
-		return copyIDsFromDetail(copies), nil
+		return copyIDsFromDetail(copies), "", nil
 	case labelSourceBook:
-		bookID, err := strconv.Atoi(strings.TrimSpace(c.Query("book_id")))
-		if err != nil {
-			return nil, errors.New("label_book_id_required")
+		bookID, atoiErr := strconv.Atoi(strings.TrimSpace(c.Query("book_id")))
+		if atoiErr != nil {
+			return nil, "label_book_id_required", nil
 		}
-		copies, err := dm.GetCopiesByBookID(bookID)
-		if err != nil {
-			log.Printf("resolveLabelSource(book %d): %v", bookID, err)
-			return nil, errors.New("internal_error")
+		copies, dbErr := dm.GetCopiesByBookID(bookID)
+		if dbErr != nil {
+			return nil, "", fmt.Errorf("GetCopiesByBookID(%d): %w", bookID, dbErr)
 		}
-		ids := make([]int, len(copies))
+		out := make([]int, len(copies))
 		for i, cp := range copies {
-			ids[i] = cp.ID
+			out[i] = cp.ID
 		}
-		return ids, nil
+		return out, "", nil
 	case labelSourceBarcode:
 		barcode := strings.TrimSpace(c.Query("barcode"))
 		if barcode == "" {
-			return nil, errors.New("label_barcode_required")
+			return nil, "label_barcode_required", nil
 		}
-		cp, err := dm.GetCopyByBarcode(barcode)
-		if errors.Is(err, ErrCopyNotFound) {
-			return nil, errors.New("label_barcode_unknown")
+		cp, dbErr := dm.GetCopyByBarcode(barcode)
+		if errors.Is(dbErr, ErrCopyNotFound) {
+			return nil, "label_barcode_unknown", nil
 		}
-		if err != nil {
-			log.Printf("resolveLabelSource(barcode %q): %v", barcode, err)
-			return nil, errors.New("internal_error")
+		if dbErr != nil {
+			return nil, "", fmt.Errorf("GetCopyByBarcode(%q): %w", barcode, dbErr)
 		}
-		return []int{cp.ID}, nil
+		return []int{cp.ID}, "", nil
 	}
-	return nil, errors.New("label_source_invalid")
+	return nil, "label_source_invalid", nil
 }
 
 func copyIDsFromDetail(rows []CopyDetail) []int {

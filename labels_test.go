@@ -23,6 +23,7 @@ func TestAuthorPrefix3(t *testing.T) {
 		{"whitespace only", "   ", ""},
 		{"trailing whitespace", "Mark Twain   ", "TWA"},
 		{"lowercase input", "george orwell", "ORW"},
+		{"multibyte UTF-8 surname not byte-truncated", "Carlos Ñoño", "ÑOÑ"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -77,7 +78,7 @@ func TestPrintLabelsRenderProducesOneSVGPerCopy(t *testing.T) {
 
 	// Filter by the specific book so the seeded fixture catalog
 	// doesn't inflate the SVG count.
-	url := "/inventory/print-labels/render?source=book&book_id=" + intToString(bookID)
+	url := "/inventory/print-labels/render?source=book&book_id=" + strconv.Itoa(bookID)
 	rr := authGet(t, router, url, sess)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
@@ -157,9 +158,7 @@ func TestMarkRelabeledClearsFlagAndRedirects(t *testing.T) {
 		t.Fatalf("seed needs_relabel: %v", err)
 	}
 
-	form := url.Values{"copy_ids": {string(rune('0' + (copyID % 10)))}}
-	// build a real comma-free single-id string regardless of magnitude
-	form.Set("copy_ids", intToString(copyID))
+	form := url.Values{"copy_ids": {strconv.Itoa(copyID)}}
 	rr := authPost(t, router, "/inventory/print-labels/mark-relabeled", sess, csrf, form)
 	if rr.Code != http.StatusFound {
 		t.Fatalf("status = %d, want 302; body=%s", rr.Code, rr.Body.String())
@@ -297,25 +296,4 @@ func TestLabelCalibrationCrosshairCountL7160(t *testing.T) {
 	if count != 21 {
 		t.Errorf("crosshair count = %d, want 21 (avery-l7160 3x7)", count)
 	}
-}
-
-// intToString is a tiny helper to render an int into the form value;
-// avoids importing strconv for one-off test fixtures.
-func intToString(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	negative := n < 0
-	if negative {
-		n = -n
-	}
-	var digits []byte
-	for n > 0 {
-		digits = append([]byte{byte('0' + n%10)}, digits...)
-		n /= 10
-	}
-	if negative {
-		return "-" + string(digits)
-	}
-	return string(digits)
 }

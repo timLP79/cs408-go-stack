@@ -101,11 +101,14 @@ func authorPrefix3(author string) string {
 	if len(fields) == 0 {
 		return ""
 	}
-	last := fields[len(fields)-1]
-	if len(last) > 3 {
-		last = last[:3]
+	// Slice by runes, not bytes, so multi-byte UTF-8 surnames
+	// (e.g. "Ñoño") don't get truncated mid-codepoint into a
+	// malformed string that breaks ToUpper or the template.
+	runes := []rune(fields[len(fields)-1])
+	if len(runes) > 3 {
+		runes = runes[:3]
 	}
-	return strings.ToUpper(last)
+	return strings.ToUpper(string(runes))
 }
 
 // RenderBarcodeSVG returns a self-contained SVG string for value
@@ -160,6 +163,11 @@ func svgFromBarcode(bc barcode.Barcode) string {
 		runStart = -1
 	}
 	for x := range width {
+		// boombuler's 1D output is fully opaque monochrome, so alpha
+		// can be discarded; pure black (0,0,0) is a bar, anything else
+		// (i.e. pure white) is a space. A future 2D format would need
+		// a different sampling strategy, but RenderBarcodeSVG above
+		// hard-gates the dispatch to 1D formats only.
 		r, g, blue, _ := bc.At(x+b.Min.X, b.Min.Y).RGBA()
 		isBar := r == 0 && g == 0 && blue == 0
 		if isBar {
