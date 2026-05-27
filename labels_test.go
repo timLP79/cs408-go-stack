@@ -36,11 +36,11 @@ func TestAuthorPrefix3(t *testing.T) {
 
 func TestLabelPresetLookup(t *testing.T) {
 	cases := []struct {
-		slug   string
-		ok     bool
-		paper  string
-		cols   int
-		rows   int
+		slug  string
+		ok    bool
+		paper string
+		cols  int
+		rows  int
 	}{
 		{"avery-5160", true, "letter", 3, 10},
 		{"avery-5161", true, "letter", 2, 10},
@@ -132,11 +132,4 @@ func TestRenderBarcodeSVG(t *testing.T) {
 			}
 		})
 	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
