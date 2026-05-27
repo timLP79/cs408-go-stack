@@ -104,7 +104,7 @@ they do not bleed into other projects.
 **Installed under `.claude/`:**
 
 - `agents/` -- planner, architect, code-reviewer, security-reviewer, go-reviewer,
-  go-build-resolver, database-reviewer, tdd-guide, e2e-runner, refactor-cleaner
+  go-build-resolver, tdd-guide, e2e-runner, refactor-cleaner
 - `skills/` -- golang-patterns, golang-testing, tdd-workflow, security-review,
   verification-loop, e2e-testing, api-design, deployment-patterns, search-first
 - `commands/` -- /plan, /go-review, /go-test, /go-build, /build-fix, /test-coverage,
@@ -125,6 +125,10 @@ they do not bleed into other projects.
 - ECC's `/code-review` command. Anthropic ships a more capable built-in `/code-review`
   in Claude Code itself (with effort levels, cloud "ultra" mode, and `--comment` for
   inline PR comments). Use the built-in. The ECC copy was a name-collision duplicate.
+- ECC's `database-reviewer` agent. It is PostgreSQL-specific (MVCC, JSONB, query
+  planner specifics) and LibreShelf uses SQLite via `modernc.org/sqlite`. The
+  `go-reviewer` agent and the parameterized-query rule in the Standards section
+  above already cover the relevant DB concerns at the Go layer.
 
 **Precedence:** This `CLAUDE.md` overrides anything ECC ships. If an ECC skill instructs
 you to "save this to memory" or "create a TODO.md," ignore that step and follow the
