@@ -887,7 +887,17 @@ func (dm *DatabaseManager) createSchema() {
 		value      TEXT NOT NULL,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_by INTEGER REFERENCES users(id)
-	);`
+	);
+
+	CREATE TABLE IF NOT EXISTS label_settings (
+		id              INTEGER PRIMARY KEY CHECK (id = 1),
+		preset          TEXT NOT NULL DEFAULT 'avery-5160',
+		offset_top_mm   REAL NOT NULL DEFAULT 0.0,
+		offset_left_mm  REAL NOT NULL DEFAULT 0.0
+	);
+
+	INSERT OR IGNORE INTO label_settings (id, preset, offset_top_mm, offset_left_mm)
+		VALUES (1, 'avery-5160', 0.0, 0.0);`
 
 	if _, err := dm.db.Exec(schema); err != nil {
 		log.Fatalf("Failed to create schema: %v", err)
