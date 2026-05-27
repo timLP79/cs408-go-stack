@@ -47,8 +47,13 @@ pull/commit workflow.
   memory store.
 - **DO** use `bd remember "<insight>" --key=<slug>` to persist cross-session knowledge.
 - **DO** use `bd memories` to list and `bd memories <keyword>` to search.
-- **DO NOT** use `TodoWrite`, `TaskCreate`, or markdown TODO lists for task tracking. Use `bd`
-  issues (`bd create`, `bd ready`, `bd close`).
+- **TodoWrite is allowed for in-session scratchpad use only**, meaning a multi-step
+  decomposition you will finish before the session ends. It is ephemeral and does not sync.
+- **DO NOT** use `TodoWrite` or markdown TODO lists as a backlog. Anything that should outlive
+  the session, get picked up later, or sync between laptop and desktop must be a `bd` issue
+  (`bd create`, `bd ready`, `bd close`). If a TodoWrite item turns out to span sessions,
+  promote it to `bd create` before ending the session.
+- **DO NOT** create markdown TODO files (`TODO.md`, `BACKLOG.md`, etc.) anywhere in the repo.
 
 The reason this is a hard rule: the auto-memory is per-device and does not sync. `bd remember`
 travels with the repo.
@@ -87,6 +92,39 @@ when he does, switch to showing code without writing it and explaining each piec
 **School coding (Java, C, Python for class):** Tutoring mode. Guide, do not generate.
 
 **Work coding (Snowflake SQL, Apps Script, Streamlit):** Generate and explain fully.
+
+---
+
+## ECC Tooling
+
+This project pulls a curated, project-scoped subset of [ECC](https://github.com/affaan-m/ECC)
+into `.claude/`. ECC is a Claude Code plugin pack. The bits here are local to LibreShelf so
+they do not bleed into other projects.
+
+**Installed under `.claude/`:**
+
+- `agents/` -- planner, architect, code-reviewer, security-reviewer, go-reviewer,
+  go-build-resolver, database-reviewer, tdd-guide, e2e-runner, refactor-cleaner
+- `skills/` -- golang-patterns, golang-testing, tdd-workflow, security-review,
+  verification-loop, e2e-testing, api-design, deployment-patterns, search-first
+- `commands/` -- /plan, /code-review, /go-review, /go-test, /go-build, /build-fix,
+  /test-coverage, /refactor-clean (alongside the existing /handoff)
+- `rules/ecc/golang/` only. ECC's `common/` rules were intentionally excluded because they
+  duplicate or contradict the standards already in this `CLAUDE.md` (e.g. broader TodoWrite
+  guidance, heavier Plan-First doc workflow).
+
+**Deliberately NOT installed, and must NOT be added later:**
+
+- ECC's `continuous-learning-v2`, `instinct-*`, `/evolve`, `/prune`. They write to the
+  forbidden auto-memory directory.
+- ECC's `hooks-runtime`. Conflicts with the existing `bd prime` SessionStart hook and
+  `context-warn.sh` Stop hook.
+- ECC's `multi-*` commands, NanoClaw, loop-operator. Overkill for a solo Go project.
+- ECC rules and skills for non-Go stacks.
+
+**Precedence:** This `CLAUDE.md` overrides anything ECC ships. If an ECC skill instructs
+you to "save this to memory" or "create a TODO.md," ignore that step and follow the
+Persistence and Memory rules above. ECC skills are tools, not policy.
 
 ---
 
@@ -250,9 +288,9 @@ bd close <id>         # Complete work
 
 ### Rules
 
-- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
+- Use `bd` for DURABLE task tracking. TodoWrite is allowed only as an in-session scratchpad; promote anything spanning sessions to a `bd` issue. See the Persistence and Memory section above for the full rule.
 - Run `bd prime` for detailed command reference and session close protocol
-- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
+- Use `bd remember` for persistent knowledge. Do NOT use MEMORY.md files or the auto-memory directory.
 
 ## Session Completion
 
