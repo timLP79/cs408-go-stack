@@ -54,6 +54,8 @@
 
             {{if and .User (or (eq .User.Role "admin") (eq .User.Role "staff"))}}
             <div class="sidebar-section-label mt-3">Circulation</div>
+            <a class="nav-link rounded" href="/checkout">Check Out</a>
+            <a class="nav-link rounded" href="/checkin">Check In</a>
             <a class="nav-link rounded" href="/loans">Active Loans</a>
             <a class="nav-link rounded" href="/reports/overdue">Reports</a>
 

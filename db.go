@@ -341,6 +341,111 @@ func (dm *DatabaseManager) CheckoutBook(copyID, patronID int, dueDate time.Time)
 	return tx.Commit()
 }
 
+// ActiveLoanInfo is the join shape returned by GetActiveLoanByBarcode:
+// enough information for the rapid-scan checkin portal to render a
+// scan-table row (book title, patron name, due date) and to call
+// ReturnBook / undo paths (loan id).
+type ActiveLoanInfo struct {
+	LoanID       int
+	CopyID       int
+	BookID       int
+	BookTitle    string
+	PatronID     int
+	PatronName   string
+	Barcode      string
+	CheckedOutAt string
+	DueDate      string
+}
+
+// ErrNoActiveLoanForBarcode means a copy with that barcode exists but
+// is not currently checked out. Distinct from ErrCopyNotFound (no copy
+// at all). The rapid-scan checkin handler surfaces these as different
+// flash codes so staff know whether they scanned the wrong barcode or
+// a barcode for an already-returned copy.
+var ErrNoActiveLoanForBarcode = errors.New("db: copy is not currently on loan")
+
+// GetActiveLoanByBarcode looks up the active (not-yet-returned) loan
+// for the copy with the given barcode, joining through copies + books
+// + patrons to fill ActiveLoanInfo. Returns ErrCopyNotFound when no
+// copy has that barcode, ErrNoActiveLoanForBarcode when the copy
+// exists but is on the shelf.
+func (dm *DatabaseManager) GetActiveLoanByBarcode(barcode string) (*ActiveLoanInfo, error) {
+	cp, err := dm.GetCopyByBarcode(barcode)
+	if err != nil {
+		return nil, err
+	}
+	info := &ActiveLoanInfo{
+		CopyID:  cp.ID,
+		BookID:  cp.BookID,
+		Barcode: cp.Barcode,
+	}
+	err = dm.db.QueryRow(`
+		SELECT l.id, l.checked_out_at, l.due_date, l.patron_id, p.name, b.title
+		FROM loans l
+		JOIN copies c ON l.copy_id = c.id
+		JOIN books b ON c.book_id = b.id
+		JOIN patrons p ON l.patron_id = p.id
+		WHERE c.barcode = ? AND l.returned_at IS NULL
+		ORDER BY l.checked_out_at DESC LIMIT 1`,
+		barcode).Scan(&info.LoanID, &info.CheckedOutAt, &info.DueDate,
+		&info.PatronID, &info.PatronName, &info.BookTitle)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNoActiveLoanForBarcode
+	}
+	if err != nil {
+		return nil, err
+	}
+	return info, nil
+}
+
+// DeleteLoanIfActive removes a loan row only when the loan has not
+// been returned yet. Used by the rapid-scan checkout portal's undo
+// button to back out a just-created loan. Returns ErrLoanAlreadyReturned
+// if returned_at is non-NULL (preserves history; an already-returned
+// loan is not a typo that can be undone, it's a completed cycle).
+// Returns sql.ErrNoRows when no loan with that id exists.
+func (dm *DatabaseManager) DeleteLoanIfActive(loanID int) error {
+	tx, err := dm.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var returnedAt sql.NullString
+	if err := tx.QueryRow(`SELECT returned_at FROM loans WHERE id = ?`, loanID).Scan(&returnedAt); err != nil {
+		return err
+	}
+	if returnedAt.Valid {
+		return ErrLoanAlreadyReturned
+	}
+	if _, err := tx.Exec(`DELETE FROM loans WHERE id = ?`, loanID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// ReopenReturnedLoan clears the returned_at column on a previously-
+// returned loan. Used by the rapid-scan checkin portal's undo button
+// to back out a mistaken return (the patron didn't actually bring the
+// book back). Returns sql.ErrNoRows when the loan id doesn't exist
+// and ErrLoanAlreadyReturned... wait, the opposite: this is for loans
+// that ARE returned. Returns nil on success; if returned_at is
+// already NULL the UPDATE is a no-op but still commits cleanly.
+func (dm *DatabaseManager) ReopenReturnedLoan(loanID int) error {
+	res, err := dm.db.Exec(`UPDATE loans SET returned_at = NULL WHERE id = ?`, loanID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (dm *DatabaseManager) ReturnBook(loanID int) error {
 	tx, err := dm.db.Begin()
 	if err != nil {
