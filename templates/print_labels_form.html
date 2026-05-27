@@ -1,0 +1,74 @@
+{{define "content"}}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1 class="mb-1">Print Labels</h1>
+        <p class="text-muted mb-0">Generate a printable sheet of combined spine + barcode labels.</p>
+    </div>
+    <a href="/inventory" class="btn btn-outline-secondary">Back to Inventory</a>
+</div>
+
+{{if .Error}}<div class="alert alert-danger">{{.Error}}</div>{{end}}
+{{if .Success}}<div class="alert alert-success">{{.Success}}</div>{{end}}
+
+<form method="GET" action="/inventory/print-labels/render" class="card p-4" target="_blank" rel="noopener">
+    <fieldset class="mb-3">
+        <legend class="form-label">Source</legend>
+
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="source" id="src-all" value="all" checked>
+            <label class="form-check-label" for="src-all">
+                <strong>All copies</strong>
+                <div class="form-text">Every copy in the catalog (excluding withdrawn).</div>
+            </label>
+        </div>
+
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="source" id="src-relabel" value="needs_relabel">
+            <label class="form-check-label" for="src-relabel">
+                <strong>Copies flagged for relabel</strong>
+                <div class="form-text">Only copies with the needs-relabel flag set (typically newly added or after a barcode change).</div>
+            </label>
+        </div>
+
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="source" id="src-book" value="book">
+            <label class="form-check-label" for="src-book">
+                <strong>Single book (all its copies)</strong>
+            </label>
+            <div class="ms-4 mt-1">
+                <input type="number" class="form-control form-control-sm" name="book_id" placeholder="Book ID" style="max-width: 14rem;">
+                <div class="form-text">Use the numeric id from the book detail URL.</div>
+            </div>
+        </div>
+
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="source" id="src-barcode" value="barcode">
+            <label class="form-check-label" for="src-barcode">
+                <strong>One specific barcode</strong>
+            </label>
+            <div class="ms-4 mt-1">
+                <input type="text" class="form-control form-control-sm" name="barcode"
+                       autocomplete="off" autocapitalize="off" spellcheck="false"
+                       placeholder="Scan or type the barcode" style="max-width: 18rem;">
+            </div>
+        </div>
+    </fieldset>
+
+    <div class="mb-3">
+        <label for="preset" class="form-label">Sheet preset</label>
+        <select class="form-select" name="preset" id="preset" style="max-width: 28rem;">
+            {{$default := .Default}}
+            {{range .Presets}}
+            <option value="{{.Slug}}"{{if eq .Slug $default}} selected{{end}}>{{.Label}}</option>
+            {{end}}
+        </select>
+        <div class="form-text">Default is set on the <a href="/admin/inventory/label-settings">label settings</a> page. Choose a different preset here to override for this print run only.</div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn" style="background-color: #1e3a5f; color: #ffffff;">
+            Generate Print Page
+        </button>
+    </div>
+</form>
+{{end}}

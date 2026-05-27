@@ -1,0 +1,214 @@
+/*
+ * LibreShelf print stylesheet.
+ *
+ * Two-mode design:
+ *   - On screen: a faux paper sheet centered on a light gray background so
+ *     the librarian can sanity-check the layout before printing.
+ *   - On print: chrome hidden, the sheet sized to the @page rules injected
+ *     inline by the handler from the active LabelPreset.
+ *
+ * All dimensions come from the inline :root custom properties on the
+ * print page. This file is preset-agnostic; the page sets --cell-w,
+ * --cell-h, --cols, --margin-top, --margin-left, --col-gap, --row-gap,
+ * --calib-top, --calib-left, --page-w, --page-h.
+ *
+ * Per-preset overrides exist only for the few cases where a preset
+ * needs different vertical behavior (the roll-1x2.5 page is a single
+ * label per page; everything else is a grid).
+ */
+
+/* ---------- Reset ---------- */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #000;
+}
+
+/* ---------- Screen mode (preview) ---------- */
+@media screen {
+    body {
+        background: #e9ecef;
+        padding: 1rem;
+    }
+
+    .label-sheet {
+        background: #fff;
+        margin: 1rem auto;
+        width: var(--page-w);
+        min-height: var(--page-h);
+        box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.12);
+    }
+
+    .toolbar {
+        position: sticky;
+        top: 0;
+        background: #1e3a5f;
+        color: #fff;
+        padding: 0.5rem 1rem;
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        z-index: 10;
+        font-size: 0.9rem;
+    }
+
+    .toolbar a,
+    .toolbar button {
+        color: #fff;
+        text-decoration: none;
+        background: transparent;
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        padding: 0.25rem 0.75rem;
+        border-radius: 0.25rem;
+        font: inherit;
+        cursor: pointer;
+    }
+
+    .toolbar a:hover,
+    .toolbar button:hover {
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    .toolbar .count {
+        margin-left: auto;
+        opacity: 0.85;
+    }
+
+    .toolbar code {
+        background: rgba(255, 255, 255, 0.15);
+        padding: 0 0.3em;
+        border-radius: 0.2em;
+    }
+}
+
+/* ---------- Print mode ---------- */
+@media print {
+    .no-print,
+    .toolbar {
+        display: none !important;
+    }
+
+    body {
+        background: #fff;
+    }
+
+    .label-sheet {
+        margin: 0;
+        width: var(--page-w);
+        min-height: var(--page-h);
+    }
+}
+
+/* ---------- Label-sheet grid ---------- */
+.label-sheet {
+    padding-top: calc(var(--margin-top) + var(--calib-top));
+    padding-left: calc(var(--margin-left) + var(--calib-left));
+    padding-right: var(--margin-left);
+    display: grid;
+    grid-template-columns: repeat(var(--cols), var(--cell-w));
+    column-gap: var(--col-gap);
+    row-gap: var(--row-gap);
+    align-content: start;
+}
+
+.label-cell {
+    width: var(--cell-w);
+    height: var(--cell-h);
+    padding: 1mm 1.5mm;
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    row-gap: 0.3mm;
+    overflow: hidden;
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+
+.label-dewey {
+    font-size: 3.5mm;
+    font-weight: 700;
+    line-height: 1.05;
+    text-align: center;
+    letter-spacing: 0.1mm;
+    min-height: 4mm;
+}
+
+.label-author {
+    font-size: 3mm;
+    font-weight: 600;
+    line-height: 1;
+    text-align: center;
+    letter-spacing: 0.5mm;
+    min-height: 3mm;
+}
+
+.label-barcode {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 8mm;
+}
+
+.label-barcode svg {
+    width: 100%;
+    height: 8mm;
+    display: block;
+}
+
+.label-barcode-text {
+    font-family: "Courier New", monospace;
+    font-size: 2.4mm;
+    text-align: center;
+    line-height: 1;
+    letter-spacing: 0.15mm;
+}
+
+/* ---------- Per-preset overrides ---------- */
+
+/* Continuous roll: one label per "page". Strip the page-level margins
+   and let the cell occupy the entire @page area. */
+body.preset-roll-1x2-5 .label-sheet,
+body.preset-roll-1x2\.5 .label-sheet {
+    padding: 0;
+    grid-template-columns: var(--cell-w);
+}
+
+/* Avery 5161 has wider cells; let the barcode stretch and the Dewey
+   sit a little larger to use the extra width. */
+body.preset-avery-5161 .label-dewey {
+    font-size: 4mm;
+}
+
+body.preset-avery-5161 .label-barcode svg {
+    height: 9mm;
+}
+
+/* ---------- Calibration mode ---------- */
+.calibration .label-cell {
+    border: 0.1mm dashed #888;
+    padding: 0;
+    grid-template-rows: 1fr auto;
+    row-gap: 0;
+    position: relative;
+}
+
+.calibration .crosshair {
+    width: 100%;
+    height: 100%;
+}
+
+.calibration-label {
+    font-size: 2.2mm;
+    text-align: center;
+    color: #555;
+    padding-bottom: 0.5mm;
+}
+
+@media print {
+    .calibration .label-cell {
+        border-color: #000;
+    }
+}

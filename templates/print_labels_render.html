@@ -1,0 +1,53 @@
+{{define "print_labels_render"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>{{.Title}}</title>
+    <style>
+        @page {
+            size: {{.Preset.PageWmm}}mm {{.Preset.PageHmm}}mm;
+            margin: 0;
+        }
+        :root {
+            --calib-top: {{.OffsetTopMm}}mm;
+            --calib-left: {{.OffsetLeftMm}}mm;
+            --margin-top: {{.Preset.MarginTopmm}}mm;
+            --margin-left: {{.Preset.MarginLeftmm}}mm;
+            --cell-w: {{.Preset.CellWmm}}mm;
+            --cell-h: {{.Preset.CellHmm}}mm;
+            --col-gap: {{.Preset.ColGapmm}}mm;
+            --row-gap: {{.Preset.RowGapmm}}mm;
+            --page-w: {{.Preset.PageWmm}}mm;
+            --page-h: {{.Preset.PageHmm}}mm;
+            --cols: {{.Preset.Cols}};
+        }
+    </style>
+    <link rel="stylesheet" href="/stylesheets/print.css">
+</head>
+<body class="preset-{{.Preset.Slug}}">
+<div class="no-print toolbar">
+    <button type="button" class="btn-print" onclick="window.print()">Print this page</button>
+    {{if .NeedsRelabelIDs}}
+    <form method="POST" action="/inventory/print-labels/mark-relabeled" class="d-inline">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="hidden" name="copy_ids" value="{{range $i, $id := .NeedsRelabelIDs}}{{if $i}},{{end}}{{$id}}{{end}}">
+        <button type="submit" class="btn-mark">Mark {{len .NeedsRelabelIDs}} copies as relabeled</button>
+    </form>
+    {{end}}
+    <a href="/inventory/print-labels" class="btn-back">Back to the picker</a>
+    <span class="count">{{len .Labels}} label{{if ne (len .Labels) 1}}s{{end}}, preset <code>{{.Preset.Slug}}</code></span>
+</div>
+
+<div class="label-sheet">
+    {{range .Labels}}
+    <div class="label-cell">
+        <div class="label-dewey">{{.Dewey}}</div>
+        <div class="label-author">{{.AuthorPrefix}}</div>
+        <div class="label-barcode">{{.SVG}}</div>
+        <div class="label-barcode-text">{{.Barcode}}</div>
+    </div>
+    {{end}}
+</div>
+</body>
+</html>
+{{end}}

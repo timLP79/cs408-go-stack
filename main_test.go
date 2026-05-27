@@ -100,6 +100,7 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *DatabaseManager) {
 		"backup_admin", "admin_settings",
 		"admin_patrons_import", "admin_patrons_import_preview", "admin_patrons_import_result",
 		"patron_login_credentials",
+		"print_labels_form", "label_settings",
 	}
 	for _, name := range templateNames {
 		files := []string{
@@ -120,6 +121,14 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *DatabaseManager) {
 	}
 	templates["login"] = template.Must(template.ParseFiles("templates/login.html"))
 	templates["account_change_password"] = template.Must(template.ParseFiles("templates/account_change_password.html"))
+
+	// Layout-less print pages.
+	templates["print_labels_render"] = template.Must(template.New("print_labels_render").Funcs(funcMap).ParseFiles(
+		"templates/print_labels_render.html",
+	))
+	templates["label_calibration"] = template.Must(template.New("label_calibration").Funcs(funcMap).ParseFiles(
+		"templates/label_calibration.html",
+	))
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -190,6 +199,9 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *DatabaseManager) {
 	staff.GET("/reports/overdue", HandleReportsOverdue)
 	staff.GET("/reports/overdue/patron/:id/notice", HandleOverdueNotice)
 	staff.GET("/staff-tools", HandleStaffTools)
+	staff.GET("/inventory/print-labels", HandlePrintLabelsForm)
+	staff.GET("/inventory/print-labels/render", HandlePrintLabelsRender)
+	staff.POST("/inventory/print-labels/mark-relabeled", HandleMarkRelabeled)
 
 	// Admin-only routes (read-locked)
 	admin := router.Group("/")
@@ -205,6 +217,9 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *DatabaseManager) {
 	admin.GET("/admin/backup/export", HandleBackupExport)
 	admin.GET("/admin/settings", HandleSettings)
 	admin.POST("/admin/settings", HandleSettingsPost)
+	admin.GET("/admin/inventory/label-settings", HandleLabelSettings)
+	admin.POST("/admin/inventory/label-settings", HandleLabelSettingsPost)
+	admin.GET("/admin/inventory/label-settings/calibration", HandleLabelCalibration)
 
 	// Patron import (mirror)
 	patronImport := router.Group("/")
