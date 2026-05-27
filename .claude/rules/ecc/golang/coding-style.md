@@ -6,8 +6,6 @@ paths:
 ---
 # Go Coding Style
 
-> This file extends [common/coding-style.md](../common/coding-style.md) with Go specific content.
-
 ## Formatting
 
 - **gofmt** and **goimports** are mandatory — no style debates

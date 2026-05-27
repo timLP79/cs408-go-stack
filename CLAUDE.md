@@ -112,7 +112,9 @@ they do not bleed into other projects.
   see "Deliberately NOT installed" below.
 - `rules/ecc/golang/` only. ECC's `common/` rules were intentionally excluded because they
   duplicate or contradict the standards already in this `CLAUDE.md` (e.g. broader TodoWrite
-  guidance, heavier Plan-First doc workflow).
+  guidance, heavier Plan-First doc workflow). These Go rules load conditionally via
+  `paths:` frontmatter when Claude reads or edits a `.go`, `go.mod`, or `go.sum` file;
+  they are not in context at session start.
 
 **Deliberately NOT installed, and must NOT be added later:**
 

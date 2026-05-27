@@ -6,8 +6,6 @@ paths:
 ---
 # Go Testing
 
-> This file extends [common/testing.md](../common/testing.md) with Go specific content.
-
 ## Framework
 
 Use the standard `go test` with **table-driven tests**.
