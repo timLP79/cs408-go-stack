@@ -26,6 +26,23 @@
         <li>{{template "copy_status_form" (dict "Copy" .Copy "CSRFToken" .CSRFToken "NextStatus" "withdrawn" "Label" "Mark Withdrawn")}}</li>
         {{end}}
         <li><hr class="dropdown-divider"></li>
+        {{if .Copy.NeedsRelabel}}
+        <li>
+            <button type="button" class="dropdown-item" disabled
+                    title="This copy is already flagged for relabel; print it on the Print Labels page to clear the flag.">
+                Already flagged for relabel
+            </button>
+        </li>
+        {{else}}
+        <li>
+            <form method="POST" action="/copies/{{.Copy.ID}}/relabel" class="m-0">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <button type="submit" class="dropdown-item">
+                    Flag for relabel
+                </button>
+            </form>
+        </li>
+        {{end}}
         <li>
             <a class="dropdown-item"
                href="/inventory/print-labels/render?source=barcode&barcode={{.Copy.Barcode}}"

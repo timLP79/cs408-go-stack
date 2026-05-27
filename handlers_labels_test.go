@@ -273,6 +273,43 @@ func TestLabelCalibrationCrosshairCount(t *testing.T) {
 	}
 }
 
+func TestFlagRelabelSetsFlagAndRedirects(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "staff_flag", "staff")
+
+	bookID, err := dm.CreateBook(&Book{Title: "Flag Handler Test"}, []string{"A"})
+	if err != nil {
+		t.Fatalf("CreateBook: %v", err)
+	}
+	copyID, _, err := dm.AddLibraryCopy(bookID)
+	if err != nil {
+		t.Fatalf("AddLibraryCopy: %v", err)
+	}
+
+	rr := authPost(t, router, "/copies/"+strconv.Itoa(copyID)+"/relabel", sess, csrf, nil)
+	if rr.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302; body=%s", rr.Code, rr.Body.String())
+	}
+
+	c, err := dm.GetCopyByID(copyID)
+	if err != nil {
+		t.Fatalf("GetCopyByID: %v", err)
+	}
+	if !c.NeedsRelabel {
+		t.Error("NeedsRelabel still false after /copies/:id/relabel POST")
+	}
+}
+
+func TestFlagRelabelMissingCopyReturns404(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "staff_flag_404", "staff")
+
+	rr := authPost(t, router, "/copies/99999/relabel", sess, csrf, nil)
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rr.Code)
+	}
+}
+
 func TestLabelCalibrationCrosshairCountL7160(t *testing.T) {
 	router, dm := setupTestRouter(t)
 	sess, csrf := loginAs(t, dm, "admin_cal2", "admin")

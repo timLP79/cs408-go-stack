@@ -213,6 +213,7 @@ func main() {
 	staff.GET("/inventory", HandleInventory)
 	staff.POST("/copies/:id/status", HandleCopyStatus)
 	staff.POST("/copies/:id/delete", HandleCopyDelete)
+	staff.POST("/copies/:id/relabel", HandleCopyFlagRelabel)
 	staff.GET("/checkout", HandleCheckoutPortal)
 	staff.POST("/checkout/scan", HandleCheckoutScan)
 	staff.POST("/checkout/undo", HandleCheckoutUndo)

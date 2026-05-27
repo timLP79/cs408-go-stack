@@ -97,6 +97,7 @@ var flashMessages = map[string]string{
 	"label_barcode_unknown":              "No copy with that barcode exists.",
 	"label_source_invalid":               "Unrecognized label source.",
 	"label_too_many_copies":              "Too many copy ids in one request (cap is 1000).",
+	"copy_flagged_relabel":               "Flagged for relabel:",
 }
 
 func flashCookieName(kind string) string {

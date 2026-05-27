@@ -197,6 +197,57 @@ func HandleMarkRelabeled(c *gin.Context) {
 	c.Redirect(http.StatusFound, "/inventory/print-labels")
 }
 
+// HandleCopyFlagRelabel sets needs_relabel = 1 on a single copy. Staff
+// action invoked from the copy actions dropdown on the Manage Copies /
+// Inventory pages. Redirects to the same referer-aware destination as
+// the status / delete actions so the user lands back where they came
+// from with the new flag visible.
+func HandleCopyFlagRelabel(c *gin.Context) {
+	dm := getDB(c)
+
+	copyID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.Status(http.StatusNotFound)
+		renderTemplate(c, "error", gin.H{
+			"Title":   "Not Found",
+			"Status":  404,
+			"Message": "Page not found",
+		})
+		return
+	}
+
+	cp, err := dm.GetCopyByID(copyID)
+	if errors.Is(err, ErrCopyNotFound) {
+		c.Status(http.StatusNotFound)
+		renderTemplate(c, "error", gin.H{
+			"Title":   "Not Found",
+			"Status":  404,
+			"Message": "Copy not found",
+		})
+		return
+	}
+	if err != nil {
+		log.Printf("HandleCopyFlagRelabel: GetCopyByID(%d): %v", copyID, err)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+
+	dest := copyMutationRedirect(c, cp.BookID)
+
+	switch err := dm.FlagCopyForRelabel(copyID); {
+	case err == nil:
+		setFlash(c, flashKindSuccess, "copy_flagged_relabel")
+		setFlashDetail(c, cp.Barcode)
+	case errors.Is(err, ErrCopyNotFound):
+		setFlash(c, flashKindError, "copy_not_found")
+	default:
+		log.Printf("HandleCopyFlagRelabel: FlagCopyForRelabel(%d): %v", copyID, err)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	c.Redirect(http.StatusFound, dest)
+}
+
 // HandleLabelSettings renders the admin page for default preset and
 // calibration offsets.
 func HandleLabelSettings(c *gin.Context) {

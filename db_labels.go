@@ -128,6 +128,25 @@ func (dm *DatabaseManager) GetLabelDataByCopyIDs(ids []int) ([]LabelData, error)
 	return out, rows.Err()
 }
 
+// FlagCopyForRelabel sets needs_relabel = 1 on a single copy. Returns
+// ErrCopyNotFound when the id does not exist; the print-labels page
+// later clears the flag automatically after a successful print run via
+// MarkCopiesRelabeled.
+func (dm *DatabaseManager) FlagCopyForRelabel(copyID int) error {
+	res, err := dm.db.Exec(`UPDATE copies SET needs_relabel = 1 WHERE id = ?`, copyID)
+	if err != nil {
+		return fmt.Errorf("flag copy %d for relabel: %w", copyID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if n == 0 {
+		return ErrCopyNotFound
+	}
+	return nil
+}
+
 // MarkCopiesRelabeled clears needs_relabel on the given copy ids.
 // Missing ids are tolerated (UPDATE just affects zero rows). Empty
 // input is a no-op.

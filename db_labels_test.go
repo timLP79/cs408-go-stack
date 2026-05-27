@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -171,5 +172,39 @@ func TestMarkCopiesRelabeledMissingIDsTolerated(t *testing.T) {
 	// Should not error on non-existent IDs (UPDATE just affects 0 rows).
 	if err := dm.MarkCopiesRelabeled([]int{99999, 88888}); err != nil {
 		t.Errorf("MarkCopiesRelabeled with nonexistent ids = %v, want nil", err)
+	}
+}
+
+func TestFlagCopyForRelabelSetsFlag(t *testing.T) {
+	dm := setupTestDB(t)
+	bookID, err := dm.CreateBook(&Book{Title: "Flag Test"}, []string{"Auth Or"})
+	if err != nil {
+		t.Fatalf("CreateBook: %v", err)
+	}
+	copyID, _, err := dm.AddLibraryCopy(bookID)
+	if err != nil {
+		t.Fatalf("AddLibraryCopy: %v", err)
+	}
+	if c, _ := dm.GetCopyByID(copyID); c.NeedsRelabel {
+		t.Fatalf("precondition: new copy unexpectedly has needs_relabel=1")
+	}
+
+	if err := dm.FlagCopyForRelabel(copyID); err != nil {
+		t.Fatalf("FlagCopyForRelabel: %v", err)
+	}
+	c, err := dm.GetCopyByID(copyID)
+	if err != nil {
+		t.Fatalf("GetCopyByID: %v", err)
+	}
+	if !c.NeedsRelabel {
+		t.Error("NeedsRelabel still false after FlagCopyForRelabel")
+	}
+}
+
+func TestFlagCopyForRelabelMissingIDReturnsNotFound(t *testing.T) {
+	dm := setupTestDB(t)
+	err := dm.FlagCopyForRelabel(99999)
+	if !errors.Is(err, ErrCopyNotFound) {
+		t.Errorf("err = %v, want ErrCopyNotFound", err)
 	}
 }
