@@ -100,6 +100,7 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *DatabaseManager) {
 		"backup_admin", "admin_settings",
 		"admin_patrons_import", "admin_patrons_import_preview", "admin_patrons_import_result",
 		"patron_login_credentials",
+		"print_labels_form", "label_settings",
 	}
 	for _, name := range templateNames {
 		files := []string{
@@ -120,6 +121,14 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *DatabaseManager) {
 	}
 	templates["login"] = template.Must(template.ParseFiles("templates/login.html"))
 	templates["account_change_password"] = template.Must(template.ParseFiles("templates/account_change_password.html"))
+
+	// Layout-less print pages.
+	templates["print_labels_render"] = template.Must(template.New("print_labels_render").Funcs(funcMap).ParseFiles(
+		"templates/print_labels_render.html",
+	))
+	templates["label_calibration"] = template.Must(template.New("label_calibration").Funcs(funcMap).ParseFiles(
+		"templates/label_calibration.html",
+	))
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -179,6 +188,7 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *DatabaseManager) {
 	staff.GET("/inventory", HandleInventory)
 	staff.POST("/copies/:id/status", HandleCopyStatus)
 	staff.POST("/copies/:id/delete", HandleCopyDelete)
+	staff.POST("/copies/:id/relabel", HandleCopyFlagRelabel)
 	staff.GET("/checkout", HandleCheckoutPortal)
 	staff.POST("/checkout/scan", HandleCheckoutScan)
 	staff.POST("/checkout/undo", HandleCheckoutUndo)
@@ -190,6 +200,9 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *DatabaseManager) {
 	staff.GET("/reports/overdue", HandleReportsOverdue)
 	staff.GET("/reports/overdue/patron/:id/notice", HandleOverdueNotice)
 	staff.GET("/staff-tools", HandleStaffTools)
+	staff.GET("/inventory/print-labels", HandlePrintLabelsForm)
+	staff.GET("/inventory/print-labels/render", HandlePrintLabelsRender)
+	staff.POST("/inventory/print-labels/mark-relabeled", HandleMarkRelabeled)
 
 	// Admin-only routes (read-locked)
 	admin := router.Group("/")
@@ -205,6 +218,9 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *DatabaseManager) {
 	admin.GET("/admin/backup/export", HandleBackupExport)
 	admin.GET("/admin/settings", HandleSettings)
 	admin.POST("/admin/settings", HandleSettingsPost)
+	admin.GET("/admin/inventory/label-settings", HandleLabelSettings)
+	admin.POST("/admin/inventory/label-settings", HandleLabelSettingsPost)
+	admin.GET("/admin/inventory/label-settings/calibration", HandleLabelCalibration)
 
 	// Patron import (mirror)
 	patronImport := router.Group("/")
@@ -911,11 +927,11 @@ func TestCSRFProtectAcceptsMatchingToken(t *testing.T) {
 
 // TestAuthenticatedPOSTWithCSRF is an end-to-end check that the full
 // RequireAuth -> CSRFProtect -> handler chain works for an authenticated
-// POST. Creates a session row with a known CSRF token, then verifies
-// that POST /logout without the token returns 403 and with the correct
-// token performs the logout (redirect + session cookie cleared).
-// Protects against regressions where RequireAuth forgets to populate
-// csrfToken in context.
+// POST. Creates a session row with a known CSRF token, then verifies that
+// a CSRF-protected POST without the token returns 403 and with the correct
+// token reaches the handler (200). Logout is exercised separately below
+// because it soft-fails CSRF (DEC-038). Protects against regressions where
+// RequireAuth forgets to populate csrfToken in context.
 func TestAuthenticatedPOSTWithCSRF(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "libreshelf-integration-test-*")
 	if err != nil {
@@ -942,32 +958,77 @@ func TestAuthenticatedPOSTWithCSRF(t *testing.T) {
 	router.Use(DatabaseMiddleware(dm))
 	authGroup := router.Group("/")
 	authGroup.Use(RequireAuth, CSRFProtect)
-	authGroup.POST("/logout", HandleLogout)
+	authGroup.POST("/csrf-check", func(c *gin.Context) { c.Status(http.StatusOK) })
 
-	// Case 1: POST /logout without csrf_token -> 403
-	req1 := httptest.NewRequest("POST", "/logout", nil)
+	// Case 1: CSRF-protected POST without csrf_token -> 403
+	req1 := httptest.NewRequest("POST", "/csrf-check", nil)
 	req1.AddCookie(&http.Cookie{Name: "session", Value: knownSession})
 	rr1 := httptest.NewRecorder()
 	router.ServeHTTP(rr1, req1)
 	if rr1.Code != http.StatusForbidden {
-		t.Errorf("expected 403 for /logout without csrf_token, got %d", rr1.Code)
+		t.Errorf("expected 403 for protected POST without csrf_token, got %d", rr1.Code)
 	}
 
-	// Case 2: POST /logout with correct csrf_token -> 302 redirect
+	// Case 2: CSRF-protected POST with correct csrf_token reaches the handler -> 200
 	form := url.Values{}
 	form.Set("csrf_token", knownCSRF)
-	req2 := httptest.NewRequest("POST", "/logout", strings.NewReader(form.Encode()))
+	req2 := httptest.NewRequest("POST", "/csrf-check", strings.NewReader(form.Encode()))
 	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req2.AddCookie(&http.Cookie{Name: "session", Value: knownSession})
 	rr2 := httptest.NewRecorder()
 	router.ServeHTTP(rr2, req2)
-	if rr2.Code != http.StatusFound {
-		t.Errorf("expected 302 for /logout with correct csrf_token, got %d. body: %s", rr2.Code, rr2.Body.String())
+	if rr2.Code != http.StatusOK {
+		t.Errorf("expected 200 for protected POST with correct csrf_token, got %d. body: %s", rr2.Code, rr2.Body.String())
+	}
+}
+
+// TestLogoutSoftFailsCSRF verifies the DEC-038 behavior: POST /logout
+// without a csrf_token still logs the user out (302 + cleared session
+// cookie + deleted session row) instead of returning 403. Logout is wired
+// on RequireAuth + DBReadLock only, off the strict CSRFProtect chain.
+func TestLogoutSoftFailsCSRF(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "libreshelf-logout-softfail-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(tmpDir) })
+
+	dm := NewDatabaseManager(tmpDir + "/test.sqlite")
+	dm.SeedDefaultUsers()
+
+	user, err := dm.GetUserByUsername("staff1")
+	if err != nil {
+		t.Fatalf("GetUserByUsername: %v", err)
 	}
 
-	// Verify logout cleared the session cookie in the response.
+	const knownSession = "test-session-token"
+	const knownCSRF = "test-csrf-token"
+	if err := dm.CreateSession(knownSession, user.ID, knownCSRF, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(DatabaseMiddleware(dm))
+	logoutGroup := router.Group("/")
+	logoutGroup.Use(RequireAuth, DBReadLock)
+	logoutGroup.POST("/logout", HandleLogout)
+
+	// POST /logout WITHOUT csrf_token -> 302 (soft-fail, still logs out)
+	req := httptest.NewRequest("POST", "/logout", nil)
+	req.AddCookie(&http.Cookie{Name: "session", Value: knownSession})
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusFound {
+		t.Fatalf("expected 302 for /logout without csrf_token (soft-fail), got %d. body: %s", rr.Code, rr.Body.String())
+	}
+	if got := rr.Header().Get("Location"); got != "/login" {
+		t.Errorf("expected redirect to /login, got %q", got)
+	}
+
+	// Session cookie cleared in the response.
 	var sessionCookieCleared bool
-	for _, c := range rr2.Result().Cookies() {
+	for _, c := range rr.Result().Cookies() {
 		if c.Name == "session" && c.MaxAge < 0 {
 			sessionCookieCleared = true
 			break
@@ -975,5 +1036,10 @@ func TestAuthenticatedPOSTWithCSRF(t *testing.T) {
 	}
 	if !sessionCookieCleared {
 		t.Errorf("expected logout to clear session cookie (MaxAge<0), but no cleared cookie found in response")
+	}
+
+	// Session row actually deleted -> subsequent GetSession fails.
+	if _, err := dm.GetSession(knownSession); err == nil {
+		t.Errorf("expected session row to be deleted after logout, but GetSession succeeded")
 	}
 }

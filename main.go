@@ -97,6 +97,7 @@ func main() {
 		"backup_admin", "admin_settings",
 		"admin_patrons_import", "admin_patrons_import_preview", "admin_patrons_import_result",
 		"patron_login_credentials",
+		"print_labels_form", "label_settings",
 	}
 	for _, name := range templateNames {
 		files := []string{
@@ -128,6 +129,16 @@ func main() {
 	templates["error"] = template.Must(template.New("layout").Funcs(funcMap).ParseFiles(
 		"templates/layout.html",
 		"templates/error.html",
+	))
+
+	// Print pages are layout-less so the browser's Print dialog sees only
+	// label cells + @page rules. renderPage executes the template by its
+	// own name (no "layout" wrap).
+	templates["print_labels_render"] = template.Must(template.New("print_labels_render").Funcs(funcMap).ParseFiles(
+		"templates/print_labels_render.html",
+	))
+	templates["label_calibration"] = template.Must(template.New("label_calibration").Funcs(funcMap).ParseFiles(
+		"templates/label_calibration.html",
 	))
 
 	router := gin.Default()
@@ -174,7 +185,14 @@ func main() {
 	account.Use(RequireAuth, CSRFProtect, DBReadLock)
 	account.GET("/account/change-password", HandleChangePassword)
 	account.POST("/account/change-password", HandleChangePasswordPost)
-	account.POST("/logout", HandleLogout)
+
+	// Logout soft-fails CSRF (DEC-038): a stale/missing token still logs the
+	// user out rather than 403, since logout is idempotent and destroys the
+	// session regardless. Kept on RequireAuth + DBReadLock so it still needs a
+	// live session and coordinates with the import swap lock.
+	logout := router.Group("/")
+	logout.Use(RequireAuth, DBReadLock)
+	logout.POST("/logout", HandleLogout)
 
 	// Patron-only routes
 	patron := router.Group("/")
@@ -202,6 +220,7 @@ func main() {
 	staff.GET("/inventory", HandleInventory)
 	staff.POST("/copies/:id/status", HandleCopyStatus)
 	staff.POST("/copies/:id/delete", HandleCopyDelete)
+	staff.POST("/copies/:id/relabel", HandleCopyFlagRelabel)
 	staff.GET("/checkout", HandleCheckoutPortal)
 	staff.POST("/checkout/scan", HandleCheckoutScan)
 	staff.POST("/checkout/undo", HandleCheckoutUndo)
@@ -213,6 +232,9 @@ func main() {
 	staff.GET("/reports/overdue", HandleReportsOverdue)
 	staff.GET("/reports/overdue/patron/:id/notice", HandleOverdueNotice)
 	staff.GET("/staff-tools", HandleStaffTools)
+	staff.GET("/inventory/print-labels", HandlePrintLabelsForm)
+	staff.GET("/inventory/print-labels/render", HandlePrintLabelsRender)
+	staff.POST("/inventory/print-labels/mark-relabeled", HandleMarkRelabeled)
 
 	// Admin-only routes (read-locked like everything else)
 	admin := router.Group("/")
@@ -228,6 +250,9 @@ func main() {
 	admin.GET("/admin/backup/export", HandleBackupExport)
 	admin.GET("/admin/settings", HandleSettings)
 	admin.POST("/admin/settings", HandleSettingsPost)
+	admin.GET("/admin/inventory/label-settings", HandleLabelSettings)
+	admin.POST("/admin/inventory/label-settings", HandleLabelSettingsPost)
+	admin.GET("/admin/inventory/label-settings/calibration", HandleLabelCalibration)
 
 	// Patron import -- gated by RequireStaffImportAccess so admins
 	// always reach it, staff only when staff_can_import_patrons is on.

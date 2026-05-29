@@ -3,6 +3,7 @@ module libreshelf
 go 1.25.9
 
 require (
+	github.com/boombuler/barcode v1.1.0
 	github.com/gin-gonic/gin v1.11.0
 	golang.org/x/crypto v0.49.0
 	modernc.org/sqlite v1.46.1

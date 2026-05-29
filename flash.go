@@ -85,6 +85,19 @@ var flashMessages = map[string]string{
 	"temp_password_dismissed":            "Temporary password marked as delivered.",
 	"temp_password_regenerated":          "New temporary password generated.",
 	"temp_password_unavailable":          "No temporary password is set for that patron.",
+	"label_preset_invalid":               "That label preset is not recognized.",
+	"label_no_copies_match":              "No copies match the chosen filter.",
+	"label_no_copies_to_mark":            "No copy ids supplied to mark relabeled.",
+	"label_invalid_copy_id":              "One of the copy ids was not a number.",
+	"label_marked_relabeled":             "Marked as relabeled. Copies cleared:",
+	"label_offset_not_numeric":           "Calibration offsets must be numbers.",
+	"label_offset_out_of_range":          "Calibration offsets must be within -10 to +10 mm.",
+	"label_book_id_required":             "Choose a book before generating its labels.",
+	"label_barcode_required":             "Enter a barcode before generating that single label.",
+	"label_barcode_unknown":              "No copy with that barcode exists.",
+	"label_source_invalid":               "Unrecognized label source.",
+	"label_too_many_copies":              "Too many copy ids in one request (cap is 1000).",
+	"copy_flagged_relabel":               "Flagged for relabel:",
 }
 
 func flashCookieName(kind string) string {
