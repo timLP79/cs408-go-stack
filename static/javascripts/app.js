@@ -556,6 +556,7 @@ function initBookForm() {
     var authorsField = document.getElementById("book-authors");
     var yearField = document.getElementById("book-year");
     var publisherField = document.getElementById("book-publisher");
+    var deweyField = document.getElementById("book-dewey");
     var descriptionField = document.getElementById("book-description");
     var coverUrlField = document.getElementById("cover-url");
     var coverPreview = document.getElementById("cover-preview");
@@ -629,6 +630,10 @@ function initBookForm() {
                 }
                 if (data.publish_year) yearField.value = data.publish_year;
                 if (data.publisher) publisherField.value = data.publisher;
+                // Dewey is OL-only and opportunistic: prefill when OL
+                // returns it, but never clear an existing value on a miss
+                // (manual entry always wins, so we leave it untouched).
+                if (data.dewey && deweyField) deweyField.value = data.dewey;
                 // Description follows the same overwrite-on-OL-hit
                 // semantics as title/authors/year/publisher above: if
                 // OL returns a value, take it. A second consecutive

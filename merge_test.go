@@ -35,6 +35,31 @@ func TestMergePrefill_OLFullGBEmpty_OLWins(t *testing.T) {
 	}
 }
 
+// TestMergePrefill_OLDeweyPreserved pins that the OL Dewey value
+// survives the merge unchanged (cs408-go-stack-8vi).
+func TestMergePrefill_OLDeweyPreserved(t *testing.T) {
+	ol := &BookPrefill{Title: "T", Dewey: "823.92"}
+	gb := &BookPrefill{Title: "T"}
+	got := mergePrefill(ol, gb)
+	if got.Dewey != "823.92" {
+		t.Errorf("Dewey = %q, want %q (OL value preserved)", got.Dewey, "823.92")
+	}
+}
+
+// TestMergePrefill_GBNeverSuppliesDewey locks the OL-only Dewey policy:
+// even if a GB prefill somehow carried a Dewey value, the merge must not
+// fill it (no GB->Dewey gap-fill branch). Guards against a future
+// maintainer wiring GB categories into Dewey without revisiting the
+// policy in DEC-035 / cs408-go-stack-8vi.
+func TestMergePrefill_GBNeverSuppliesDewey(t *testing.T) {
+	ol := &BookPrefill{Title: "T"} // no Dewey
+	gb := &BookPrefill{Title: "T", Dewey: "999.99"}
+	got := mergePrefill(ol, gb)
+	if got.Dewey != "" {
+		t.Errorf("Dewey = %q, want empty (GB must never supply Dewey)", got.Dewey)
+	}
+}
+
 func TestMergePrefill_OLPartialNoDescGBHasDesc_GBFillsDesc(t *testing.T) {
 	ol := &BookPrefill{
 		Title:       "Shared Title",

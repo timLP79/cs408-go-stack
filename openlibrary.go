@@ -67,6 +67,7 @@ type BookPrefill struct {
 	Authors           []string `json:"authors,omitempty"`
 	PublishYear       int      `json:"publish_year,omitempty"`
 	Publisher         string   `json:"publisher,omitempty"`
+	Dewey             string   `json:"dewey,omitempty"`
 	CoverURL          string   `json:"cover_url,omitempty"`
 	Description       string   `json:"description,omitempty"`
 	DescriptionSource string   `json:"description_source,omitempty"`
@@ -107,6 +108,11 @@ type olBook struct {
 	Covers      []int         `json:"covers"`
 	Description olDescription `json:"description"`
 	Works       []olWorkRef   `json:"works"`
+	// DeweyDecimalClass is OL's classification array; present on some
+	// edition records, absent on many. We consume the first non-empty
+	// value opportunistically (cs408-go-stack-8vi). GB never supplies
+	// Dewey, so there is no source-label tracking for this field.
+	DeweyDecimalClass []string `json:"dewey_decimal_class"`
 }
 
 type olAuthor struct {
@@ -203,6 +209,15 @@ func normalizeOpenLibraryBook(b olBook) *BookPrefill {
 	}
 	if len(b.Covers) > 0 && b.Covers[0] > 0 {
 		out.CoverURL = fmt.Sprintf(olCoverURLTemplate, b.Covers[0])
+	}
+	// Dewey: take the first non-empty, trimmed classification entry. OL
+	// records that lack the field leave Dewey empty; manual entry on the
+	// book form always wins downstream.
+	for _, d := range b.DeweyDecimalClass {
+		if v := strings.TrimSpace(d); v != "" {
+			out.Dewey = v
+			break
+		}
 	}
 	return out
 }

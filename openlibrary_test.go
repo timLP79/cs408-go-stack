@@ -125,6 +125,40 @@ func TestNormalizeOpenLibraryBook(t *testing.T) {
 	})
 }
 
+// TestNormalizeOpenLibraryBook_Dewey pins the cs408-go-stack-8vi
+// behavior: the OL edition `dewey_decimal_class` array (when present)
+// supplies books.dewey opportunistically. We take the first non-empty
+// entry, trimmed; an absent or all-empty array leaves Dewey empty.
+func TestNormalizeOpenLibraryBook_Dewey(t *testing.T) {
+	t.Run("single value trimmed", func(t *testing.T) {
+		got := normalizeOpenLibraryBook(olBook{DeweyDecimalClass: []string{"  823.92  "}})
+		if got.Dewey != "823.92" {
+			t.Errorf("Dewey = %q, want %q", got.Dewey, "823.92")
+		}
+	})
+
+	t.Run("first non-empty entry wins", func(t *testing.T) {
+		got := normalizeOpenLibraryBook(olBook{DeweyDecimalClass: []string{"   ", "", "823.92", "920"}})
+		if got.Dewey != "823.92" {
+			t.Errorf("Dewey = %q, want first non-empty %q", got.Dewey, "823.92")
+		}
+	})
+
+	t.Run("absent field leaves Dewey empty", func(t *testing.T) {
+		got := normalizeOpenLibraryBook(olBook{Title: "No Dewey Here"})
+		if got.Dewey != "" {
+			t.Errorf("Dewey = %q, want empty", got.Dewey)
+		}
+	})
+
+	t.Run("all-empty entries leave Dewey empty", func(t *testing.T) {
+		got := normalizeOpenLibraryBook(olBook{DeweyDecimalClass: []string{"  ", ""}})
+		if got.Dewey != "" {
+			t.Errorf("Dewey = %q, want empty", got.Dewey)
+		}
+	})
+}
+
 func TestNormalizeOLAuthorString(t *testing.T) {
 	cases := []struct {
 		in   string

@@ -175,6 +175,38 @@ func TestBookCreateHappyPathFullFields(t *testing.T) {
 	}
 }
 
+// TestBookCreatePersistsDewey pins the manual-override half of the Dewey
+// enrichment work (cs408-go-stack-8vi): a Dewey value typed into the book
+// form is written verbatim to books.dewey on submit. The OL chain may
+// prefill this field, but a manual value always wins because it is simply
+// what the form posts.
+func TestBookCreatePersistsDewey(t *testing.T) {
+	router, dm := setupTestRouter(t)
+	sess, csrf := loginAs(t, dm, "admin", "admin")
+
+	fields := validBookFields()
+	fields["title"] = "Dewey Book"
+	fields["isbn"] = "9780000000017"
+	fields["dewey"] = "823.92 AUS"
+
+	rr := postBookMultipart(t, router, "/books", sess, csrf, fields, "", nil)
+	if rr.Code != http.StatusFound {
+		t.Fatalf("expected 302, got %d. body: %s", rr.Code, rr.Body.String())
+	}
+
+	book, err := dm.GetBookByISBN("9780000000017")
+	if err != nil {
+		t.Fatalf("GetBookByISBN: %v", err)
+	}
+	full, err := dm.GetBookByID(book.ID)
+	if err != nil {
+		t.Fatalf("GetBookByID: %v", err)
+	}
+	if full.Dewey == nil || *full.Dewey != "823.92 AUS" {
+		t.Errorf("dewey not stored verbatim: %+v", full.Dewey)
+	}
+}
+
 // TestBookCreateAddAnotherRedirectsToNew pins the Variant B branching:
 // when submit_action=add_another is set, the handler must redirect back
 // to /books/new (not /books/:id). Flash is still set so the form page
