@@ -185,7 +185,14 @@ func main() {
 	account.Use(RequireAuth, CSRFProtect, DBReadLock)
 	account.GET("/account/change-password", HandleChangePassword)
 	account.POST("/account/change-password", HandleChangePasswordPost)
-	account.POST("/logout", HandleLogout)
+
+	// Logout soft-fails CSRF (DEC-038): a stale/missing token still logs the
+	// user out rather than 403, since logout is idempotent and destroys the
+	// session regardless. Kept on RequireAuth + DBReadLock so it still needs a
+	// live session and coordinates with the import swap lock.
+	logout := router.Group("/")
+	logout.Use(RequireAuth, DBReadLock)
+	logout.POST("/logout", HandleLogout)
 
 	// Patron-only routes
 	patron := router.Group("/")

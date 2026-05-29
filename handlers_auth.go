@@ -247,6 +247,16 @@ func HandleLoginPost(c *gin.Context) {
 }
 
 func HandleLogout(c *gin.Context) {
+	// Soft-fail CSRF: a stale or missing token (e.g. a re-login in another
+	// tab rotated the session) should still log the user out rather than
+	// 403. Logout is idempotent and destroys the session regardless. We log
+	// mismatches for visibility. See DEC-038.
+	if sessionToken, ok := c.Get("csrfToken"); ok {
+		if subtle.ConstantTimeCompare([]byte(c.PostForm("csrf_token")), []byte(sessionToken.(string))) != 1 {
+			log.Printf("HandleLogout: CSRF token mismatch (soft-fail, proceeding)")
+		}
+	}
+
 	token, err := c.Cookie("session")
 	if err == nil {
 		dm := getDB(c)

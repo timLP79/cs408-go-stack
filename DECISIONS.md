@@ -1339,3 +1339,25 @@ This intentionally departs from DEC-036's "no more wipes once deployment exists"
 - `docs/specs/2026-05-23-inventory-copies-design.md` -- full spec including UI, label layout, test plan, and issue slicing.
 - bd issue `cs408-go-stack-yu3` -- paused rapid-scan portal; rebuilt and closed by issue 6.
 - bd memory `inventory-copies-barcodes-design` -- prior single-format sketch from 2026-05-22; superseded.
+
+## DEC-038: Soft-fail CSRF on logout
+
+**Date:** 2026-05-28
+**Issue:** cs408-go-stack-q14
+
+**Context:** POST `/logout` returned 403 "CSRF validation failed -- token mismatch" when the rendered logout form held a CSRF token from a session that was no longer the one the cookie pointed to. The trigger is a stale page: `HandleLoginPost` mints a fresh session (new token + new CSRF) on every login and does not delete the user's prior session rows, so re-logging in (or logging in in a second tab) rotates the `session` cookie while an already-open page still carries the old session's CSRF token. Clicking logout on that older page submits the stale token; `RequireAuth` loads the current session and the constant-time compare fails. A `GetSession` miss (expired/wiped) redirects to `/login` instead, so a *mismatch* specifically means a live session with a non-matching token.
+
+**Decision:** Logout soft-fails CSRF. `/logout` moves off the strict `CSRFProtect` chain into its own group wired `RequireAuth, DBReadLock`. `HandleLogout` still reads the form token and logs any mismatch for visibility, but proceeds to delete the session, clear the cookie, and redirect to `/login` regardless. `/account/change-password` and all other state-changing POSTs keep strict `CSRFProtect`.
+
+**Why:** Logout is idempotent and destroys the session no matter what, so a CSRF rejection there is pure friction with little security upside. The only thing CSRF-on-logout defends against is a forced-logout (an attacker's cross-site POST logging the victim out). For a staff library tool that is a low-risk annoyance, not a breach. We accept that exposure; it is identical to simply exempting logout from CSRF, but the soft-fail shape keeps the clean redirect-to-login and still tears down the session server-side.
+
+**Rejected alternatives:**
+- *Leave strict:* correct CSRF behavior but recurring friction every time a tab goes stale; hard-refresh-before-logout is not a reasonable ask of staff.
+- *Exempt entirely (drop CSRFProtect from the route):* nearly identical security posture; soft-fail chosen for the explicit, logged, documented handling.
+- *Single session per user (delete prior sessions on login):* a larger session-model change that still leaves the stale-token-in-an-open-tab edge unresolved. Filed as future work if multi-session semantics ever matter.
+
+**Tests:** `TestAuthenticatedPOSTWithCSRF` repointed at a dummy CSRF-protected route to keep guarding "RequireAuth populates csrfToken." `TestLogoutSoftFailsCSRF` asserts POST `/logout` with no token returns 302, clears the session cookie, and deletes the session row.
+
+**Related:**
+- DEC-028 -- security hardening (SecurityHeaders, session/CSRF model).
+- `handlers_auth.go` `CSRFProtect` / `HandleLogout`; `main.go` route groups.
