@@ -1,13 +1,9 @@
-# This workflow will build a golang project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
-
+# CI: build, vet, and test on every push and PR to any branch
 name: Go
 
 on:
   push:
-    branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]
 
 jobs:
 
@@ -23,6 +19,9 @@ jobs:
 
     - name: Build
       run: go build -v ./...
+
+    - name: Vet
+      run: go vet ./...
 
     - name: Test
       run: go test -v ./...
