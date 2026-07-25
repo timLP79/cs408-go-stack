@@ -13,6 +13,9 @@ import "strings"
 // source labels (e.g. "openlibrary") are the caller's responsibility;
 // merge preserves whatever the OL input arrived with.
 //
+// Dewey is the one exception to the gap-fill rule: it is OL-only, and GB
+// never supplies it on any branch (see gbOnly).
+//
 // Either argument may be nil. The function never returns nil.
 func mergePrefill(ol, gb *BookPrefill) *BookPrefill {
 	switch {
@@ -51,6 +54,11 @@ func mergePrefill(ol, gb *BookPrefill) *BookPrefill {
 
 func gbOnly(gb *BookPrefill) *BookPrefill {
 	out := *gb
+	// Dewey is OL-only (cs408-go-stack-8vi). normalizeGoogleBook does not
+	// populate the field today, but the whole-struct copy above would
+	// carry it through if that ever changed, so the invariant is enforced
+	// here rather than relying on googlebooks.go leaving it zero.
+	out.Dewey = ""
 	if strings.TrimSpace(out.Description) != "" {
 		out.DescriptionSource = "googlebooks"
 	}
