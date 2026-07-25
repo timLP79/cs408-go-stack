@@ -35,6 +35,43 @@ func TestMergePrefill_OLFullGBEmpty_OLWins(t *testing.T) {
 	}
 }
 
+// TestMergePrefill_OLDeweyPreserved pins that the OL Dewey value
+// survives the merge unchanged (cs408-go-stack-8vi).
+func TestMergePrefill_OLDeweyPreserved(t *testing.T) {
+	ol := &BookPrefill{Title: "T", Dewey: "823.92"}
+	gb := &BookPrefill{Title: "T"}
+	got := mergePrefill(ol, gb)
+	if got.Dewey != "823.92" {
+		t.Errorf("Dewey = %q, want %q (OL value preserved)", got.Dewey, "823.92")
+	}
+}
+
+// TestMergePrefill_GBNeverSuppliesDewey locks the OL-only Dewey policy
+// on every branch that can return a GB-sourced value: the OL+GB merge
+// and the OL-miss gbOnly path. Guards against a future maintainer wiring
+// GB categories into Dewey without revisiting the policy in DEC-035 /
+// cs408-go-stack-8vi.
+func TestMergePrefill_GBNeverSuppliesDewey(t *testing.T) {
+	t.Run("OL present, GB carries Dewey", func(t *testing.T) {
+		ol := &BookPrefill{Title: "T"} // no Dewey
+		gb := &BookPrefill{Title: "T", Dewey: "999.99"}
+		got := mergePrefill(ol, gb)
+		if got.Dewey != "" {
+			t.Errorf("Dewey = %q, want empty (no GB->Dewey gap-fill branch)", got.Dewey)
+		}
+	})
+
+	// The gbOnly path is reachable in production via the OL-total-miss
+	// plus GB-fallback branch in FetchOpenLibraryBook (openlibrary.go).
+	t.Run("OL nil, gbOnly path clears Dewey", func(t *testing.T) {
+		gb := &BookPrefill{Title: "T", Dewey: "999.99"}
+		got := mergePrefill(nil, gb)
+		if got.Dewey != "" {
+			t.Errorf("Dewey = %q, want empty (gbOnly must clear a GB Dewey)", got.Dewey)
+		}
+	})
+}
+
 func TestMergePrefill_OLPartialNoDescGBHasDesc_GBFillsDesc(t *testing.T) {
 	ol := &BookPrefill{
 		Title:       "Shared Title",
