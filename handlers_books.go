@@ -622,9 +622,9 @@ func HandleBookDelete(c *gin.Context) {
 // fields:
 //   - source: "library" (default) or "scan"
 //   - count:  optional integer, only honored when source=library;
-//             defaults to 1, capped at MaxBulkCopiesPerRequest.
+//     defaults to 1, capped at MaxBulkCopiesPerRequest.
 //   - format: required when source=scan; one of
-//             code128 / code39 / ean13 / upca.
+//     code128 / code39 / ean13 / upca.
 //   - barcode: required when source=scan; the value to store.
 //
 // On success the response redirects back to the post-action
